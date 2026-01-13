@@ -1,0 +1,63 @@
+2025-08-14 19:35:43,584 - INFO - 
+============================================================
+2025-08-14 19:35:43,584 - INFO - ============================================================
+2025-08-14 19:35:43,600 - INFO -   - Culture générale et Aptitude verbale: 4 questions
+2025-08-14 19:35:43,604 - INFO -   - Logique d'organisation et Logique numérique: 3 questions
+2025-08-14 19:35:43,608 - INFO -   - Anglais: 3 questions
+2025-08-14 19:35:43,608 - INFO - ============================================================
+2025-08-15 11:01:30,166 - ERROR - Erreur lors de l'import ENA: Colonnes manquantes dans le fichier Excel: ['matiere_nom', 'lecon_nom']
+2025-08-15 11:01:30,171 - ERROR - Internal Server Error: /api/admin/import-questions-ena/
+2025-08-15 11:06:37,925 - INFO - C:\Users\kfran\CascadeProjects\concours\core\import_questions_examen_excel.py changed, reloading.
+2025-08-15 14:42:35,707 - INFO - 
+============================================================
+2025-08-15 14:42:35,776 - INFO - ============================================================
+2025-08-15 14:42:36,269 - ERROR - Erreur lors de l'import ENA: type object 'QuestionExamen' has no attribute 'MATIERE_COMBINEE_CHOICES'
+2025-08-15 14:42:36,276 - ERROR - Internal Server Error: /api/admin/import-questions-ena/
+2025-08-15 14:44:15,685 - INFO - C:\Users\kfran\CascadeProjects\concours\core\import_questions_examen_excel.py changed, reloading.
+2025-08-15 14:54:30,035 - INFO - Debut de l'import depuis: C:\Users\kfran\AppData\Local\Temp\tmpwbe6ecso.xlsx
+2025-08-15 14:54:30,253 - INFO - 5 lignes trouvees dans le fichier Excel
+2025-08-15 14:54:30,280 - INFO - Toutes les colonnes requises sont presentes
+2025-08-15 14:54:30,283 - INFO - Traitement de la ligne 2...
+2025-08-15 14:54:30,332 - INFO - Lecon creee: Histoire politique française (Culture générale + Aptitude verbale)
+2025-08-15 14:54:30,339 - ERROR - Erreur lors de la creation de la question: QuestionExamen has no matiere.
+2025-08-15 14:54:30,339 - INFO - Traitement de la ligne 3...
+2025-08-15 14:54:30,361 - INFO - Lecon creee: Union européenne (Culture générale + Aptitude verbale)
+2025-08-15 14:54:30,362 - ERROR - Erreur lors de la creation de la question: QuestionExamen has no matiere.
+2025-08-15 14:54:30,362 - INFO - Traitement de la ligne 4...
+2025-08-15 14:54:30,382 - INFO - Lecon creee: Relations d'ordre (Logique + Raisonnement)
+2025-08-15 14:54:30,389 - ERROR - Erreur lors de la creation de la question: QuestionExamen has no matiere.
+2025-08-15 14:54:30,396 - INFO - Traitement de la ligne 5...
+2025-08-15 14:54:30,454 - INFO - Lecon creee: Traduction de base (Anglais)
+2025-08-15 14:54:30,500 - ERROR - Erreur lors de la creation de la question: QuestionExamen has no matiere.
+2025-08-15 14:54:30,520 - INFO - Traitement de la ligne 6...
+2025-08-15 14:54:30,543 - INFO - Lecon creee: Expression écrite (Anglais)
+2025-08-15 14:54:30,548 - ERROR - Erreur lors de la creation de la question: QuestionExamen has no matiere.
+2025-08-15 14:54:30,554 - INFO - 
+============================================================
+2025-08-15 14:54:30,554 - INFO - RAPPORT D'IMPORT DES QUESTIONS D'EXAMEN
+2025-08-15 14:54:30,554 - INFO - ============================================================
+2025-08-15 14:54:30,554 - INFO - Questions importees avec succes: 0
+2025-08-15 14:54:30,573 - INFO - Questions echouees: 5
+2025-08-15 14:54:30,573 - INFO - Taux de succes: 0.0%
+2025-08-15 14:54:30,574 - INFO - 
+REPARTITION PAR MATIERE:
+2025-08-15 14:54:30,606 - INFO -   - Culture generale + Aptitude verbale: 4 questions
+2025-08-15 14:54:30,606 - INFO -   - Logique + Raisonnement: 3 questions
+2025-08-15 14:54:30,613 - INFO -   - Anglais: 3 questions
+2025-08-15 14:54:30,619 - INFO - ============================================================
+2025-08-15 15:34:54,924 - WARNING - Unauthorized: /api/user/stats/
+2025-08-15 15:50:38,623 - WARNING - Not Found: /api/examen-national/sessions/
+2025-08-15 15:52:44,917 - WARNING - Bad Request: /api/sessions_quiz/
+2025-08-15 15:54:11,413 - WARNING - Bad Request: /api/sessions_quiz/
+2025-08-15 15:56:31,065 - WARNING - Bad Request: /api/sessions_quiz/
+2025-08-15 15:58:16,315 - WARNING - Not Found: /api/examen-national/sessions/152/questions/
+2025-08-15 16:04:58,623 - WARNING - Not Found: /api/examen-national/sessions/152/questions/
+2025-08-15 16:10:27,629 - WARNING - Bad Request: /api/sessions_quiz/
+2025-08-15 16:12:35,558 - WARNING - Bad Request: /api/sessions_quiz/154/submit_answer/
+2025-08-15 16:15:07,416 - WARNING - Not Found: /api/examen-national/sessions/154/
+2025-08-15 16:15:15,977 - WARNING - Not Found: /api/examen-national/classement/
+2025-08-15 16:16:37,607 - WARNING - Not Found: /api/classement/
+2025-08-15 16:17:04,726 - WARNING - Not Found: /api/classement/
+2025-08-15 16:23:23,947 - WARNING - Not Found: /api/examen-national/sessions/156/
+2025-08-15 16:24:44,535 - WARNING - Not Found: /api/examen-national/sessions/156/corrections/
+2025-08-15 16:25:05,470 - INFO - C:\Users\kfran\CascadeProjects\concours\core\prepaconcours\views.py changed, reloading.

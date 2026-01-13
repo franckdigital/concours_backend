@@ -1,0 +1,13 @@
+Django>=4.2,<5
+django-cors-headers>=4.4
+django-import-export>=4.1
+djangorestframework>=3.15,<4
+djangorestframework-simplejwt>=5.3,<6
+openai==0.28.1
+pandas==2.3.3
+PyMySQL==1.1.1
+reportlab==4.4.7
+Requests==2.32.5
+openpyxl>=3.1
+tablib>=3.5
+
