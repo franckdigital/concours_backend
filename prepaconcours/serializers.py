@@ -117,7 +117,7 @@ class QuestionExamenDetailSerializer(QuestionExamenSerializer):
 
 class QuestionExamenPublicSerializer(serializers.ModelSerializer):
     """Serializer public pour les questions d'examen (sans les bonnes réponses)"""
-    choix_list = serializers.SerializerMethodField()
+    choix = serializers.SerializerMethodField()
     matiere_combinee_display = serializers.CharField(source='get_matiere_combinee_display', read_only=True)
     type_question_display = serializers.CharField(source='get_type_question_display', read_only=True)
     
@@ -126,11 +126,11 @@ class QuestionExamenPublicSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'code_question', 'texte', 'type_question', 'type_question_display',
             'matiere_combinee', 'matiere_combinee_display', 'choix_a', 'choix_b', 
-            'choix_c', 'choix_d', 'choix_e', 'choix_list', 'temps_limite_secondes',
+            'choix_c', 'choix_d', 'choix_e', 'choix', 'temps_limite_secondes',
             'difficulte'
         ]
     
-    def get_choix_list(self, obj):
+    def get_choix(self, obj):
         """Retourne la liste des choix sans indiquer la bonne réponse"""
         return obj.get_choix_list()
 

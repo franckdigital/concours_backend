@@ -4007,17 +4007,24 @@ class ContenuPedagogiqueViewSet(viewsets.ModelViewSet):
             
             # Vérifier si la réponse est correcte
             est_correcte = False
-            if question.choix_examen.exists():
-                # Pour les QCM, vérifier si la lettre correspond au bon choix
-                choix_correct = question.choix_examen.filter(est_correcte=True).first()
-                if choix_correct:
-                    # Mapper les lettres aux choix
-                    choix_ordonnes = list(question.choix_examen.all())
-                    lettres = ['a', 'b', 'c', 'd']
-                    for i, choix in enumerate(choix_ordonnes):
-                        if choix.est_correcte and i < len(lettres) and lettres[i] == reponse_donnee.lower():
-                            est_correcte = True
-                            break
+            
+            # Pour les QCM, vérifier si la lettre correspond à la bonne réponse
+            if question.type_question in ['choix_unique', 'choix_multiple', 'vrai_faux']:
+                bonne_reponse = question.bonne_reponse or ''
+                reponse_upper = reponse_donnee.upper().strip()
+                
+                if question.type_question == 'choix_multiple':
+                    # Pour les choix multiples, comparer les ensembles de lettres
+                    bonnes_lettres = set(bonne_reponse.upper().replace(',', '').replace(' ', ''))
+                    reponses_lettres = set(reponse_upper.replace(',', '').replace(' ', ''))
+                    est_correcte = bonnes_lettres == reponses_lettres
+                else:
+                    # Pour choix unique et vrai/faux
+                    est_correcte = reponse_upper == bonne_reponse.upper().strip()
+            elif question.type_question in ['texte_court', 'texte_long']:
+                # Pour les questions textuelles, comparer avec reponse_attendue
+                reponse_attendue = question.reponse_attendue or ''
+                est_correcte = reponse_donnee.strip().lower() == reponse_attendue.strip().lower()
             
             # Créer ou mettre à jour la réponse
             reponse, created = ReponseComposition.objects.update_or_create(
@@ -4032,8 +4039,11 @@ class ContenuPedagogiqueViewSet(viewsets.ModelViewSet):
             
             return Response({
                 'success': True,
+                'est_correct': est_correcte,
                 'est_correcte': est_correcte,
-                'reponse_id': reponse.id
+                'reponse_id': reponse.id,
+                'explication': question.explication or '',
+                'bonne_reponse': question.bonne_reponse or ''
             })
             
         except Exception as e:
@@ -4065,6 +4075,8 @@ class ContenuPedagogiqueViewSet(viewsets.ModelViewSet):
             return Response({
                 'success': True,
                 'score_final': score_final,
+                'bonnes_reponses': session.nombre_bonnes_reponses,
+                'total_questions': session.nombre_total_questions,
                 'nombre_bonnes_reponses': session.nombre_bonnes_reponses,
                 'nombre_total_questions': session.nombre_total_questions,
                 'pourcentage': (session.nombre_bonnes_reponses / session.nombre_total_questions * 100) if session.nombre_total_questions > 0 else 0

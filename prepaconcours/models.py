@@ -417,18 +417,18 @@ class QuestionExamen(models.Model):
         super().save(*args, **kwargs)
     
     def get_choix_list(self):
-        """Retourne la liste des choix disponibles"""
+        """Retourne la liste des choix disponibles au format attendu par le frontend"""
         choix = []
         if self.choix_a:
-            choix.append({'lettre': 'A', 'texte': self.choix_a})
+            choix.append({'id': 0, 'lettre': 'A', 'texte': self.choix_a})
         if self.choix_b:
-            choix.append({'lettre': 'B', 'texte': self.choix_b})
+            choix.append({'id': 1, 'lettre': 'B', 'texte': self.choix_b})
         if self.choix_c:
-            choix.append({'lettre': 'C', 'texte': self.choix_c})
+            choix.append({'id': 2, 'lettre': 'C', 'texte': self.choix_c})
         if self.choix_d:
-            choix.append({'lettre': 'D', 'texte': self.choix_d})
+            choix.append({'id': 3, 'lettre': 'D', 'texte': self.choix_d})
         if self.choix_e:
-            choix.append({'lettre': 'E', 'texte': self.choix_e})
+            choix.append({'id': 4, 'lettre': 'E', 'texte': self.choix_e})
         return choix
     
     def verifier_reponse(self, reponse_utilisateur):
