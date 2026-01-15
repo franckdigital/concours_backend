@@ -17,7 +17,11 @@ from .views import (
     # ViewSets pour les compositions nationales
     SessionCompositionViewSet,
     # Endpoints spécialisés pour l'import ENA
-    import_questions_ena_excel, template_excel_ena
+    import_questions_ena_excel, template_excel_ena,
+    # Endpoints pour l'import des questions régulières
+    import_questions_excel, template_excel_questions,
+    # Debug endpoint
+    check_questions_disponibles
 )
 from .views_auth import login_view, profile_view
 # Import des vues IA
@@ -87,9 +91,16 @@ urlpatterns = [
     path('evaluation/matieres/with-stats/', matieres_with_evaluation_stats, name='matieres_with_evaluation_stats'),
     path('evaluation/reset/', reset_weekly_evaluations, name='reset_weekly_evaluations'),
     
-    # Endpoints spécialisés pour l'import de questions ENA
+    # Endpoints spécialisés pour l'import de questions ENA (QuestionExamen)
     path('admin/import-questions-ena/', import_questions_ena_excel, name='import_questions_ena'),
     path('admin/template-excel-ena/', template_excel_ena, name='template_excel_ena'),
+    
+    # Endpoints pour l'import des questions régulières (Question)
+    path('admin/import-questions/', import_questions_excel, name='import_questions'),
+    path('admin/template-excel-questions/', template_excel_questions, name='template_excel_questions'),
+    
+    # Debug endpoint pour vérifier les questions disponibles
+    path('debug/questions-disponibles/', check_questions_disponibles, name='check_questions_disponibles'),
     
     # Endpoint pour l'assistant IA
     path('ai-chat/', ai_chat, name='ai_chat'),

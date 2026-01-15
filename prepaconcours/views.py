@@ -248,15 +248,33 @@ class SessionQuizViewSet(viewsets.ModelViewSet):
             nb_questions = serializer.validated_data.get('nb_questions', 10)
             choix_concours = serializer.validated_data.get('choix_concours', 'ENA')
             
+            logger.info(f"[SESSION QUIZ] Création session - matiere: {matiere}, lecon: {lecon}, nb_questions: {nb_questions}")
+            
             # Pour ENA et FP, on filtre par leçon si spécifiée, sinon par matière
             if lecon:
                 questions = list(Question.objects.filter(lecon=lecon))
                 filter_desc = f"leçon {lecon.nom}"
+                logger.info(f"[SESSION QUIZ] Filtrage par leçon '{lecon.nom}' (id={lecon.id}) - {len(questions)} questions trouvées")
             elif matiere:
                 questions = list(Question.objects.filter(matiere=matiere))
                 filter_desc = f"matière {matiere.nom}"
+                logger.info(f"[SESSION QUIZ] Filtrage par matière '{matiere.nom}' (id={matiere.id}) - {len(questions)} questions trouvées")
             else:
                 raise serializers.ValidationError({'detail': "Matière ou leçon requise pour créer une session."})
+            
+            # Debug: afficher les IDs des questions trouvées
+            if questions:
+                logger.info(f"[SESSION QUIZ] Questions disponibles: {[q.id for q in questions[:10]]}...")
+            else:
+                logger.warning(f"[SESSION QUIZ] AUCUNE question trouvée pour {filter_desc}")
+                # Vérifier combien de questions existent au total pour cette matière
+                if matiere:
+                    total_matiere = Question.objects.filter(matiere=matiere).count()
+                    logger.warning(f"[SESSION QUIZ] Total questions pour matière {matiere.nom}: {total_matiere}")
+                if lecon:
+                    total_lecon = Question.objects.filter(lecon=lecon).count()
+                    questions_sans_lecon = Question.objects.filter(matiere=lecon.matiere, lecon__isnull=True).count()
+                    logger.warning(f"[SESSION QUIZ] Questions avec leçon {lecon.nom}: {total_lecon}, sans leçon: {questions_sans_lecon}")
             
             if len(questions) < nb_questions:
                 raise serializers.ValidationError({
@@ -4088,3 +4106,228 @@ class ContenuPedagogiqueViewSet(viewsets.ModelViewSet):
                 {'error': 'Erreur lors de la finalisation de la composition'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def check_questions_disponibles(request):
+    """
+    Vérifie le nombre de questions disponibles pour une matière/leçon.
+    Utile pour le debug.
+    """
+    matiere_id = request.query_params.get('matiere_id')
+    lecon_id = request.query_params.get('lecon_id')
+    
+    result = {
+        'matiere_id': matiere_id,
+        'lecon_id': lecon_id,
+        'questions_count': 0,
+        'questions_avec_choix': 0,
+        'details': []
+    }
+    
+    try:
+        if lecon_id:
+            questions = Question.objects.filter(lecon_id=lecon_id).prefetch_related('choix')
+            result['filter'] = f'lecon_id={lecon_id}'
+        elif matiere_id:
+            questions = Question.objects.filter(matiere_id=matiere_id).prefetch_related('choix')
+            result['filter'] = f'matiere_id={matiere_id}'
+        else:
+            return Response({'error': 'matiere_id ou lecon_id requis'}, status=400)
+        
+        result['questions_count'] = questions.count()
+        result['questions_avec_choix'] = sum(1 for q in questions if q.choix.exists())
+        
+        # Détails des 10 premières questions
+        for q in questions[:10]:
+            result['details'].append({
+                'id': q.id,
+                'texte': q.texte[:50] + '...' if len(q.texte) > 50 else q.texte,
+                'type': q.type_question,
+                'nb_choix': q.choix.count(),
+                'lecon_id': q.lecon_id,
+                'matiere_id': q.matiere_id
+            })
+        
+        return Response(result)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAdminUser])
+def import_questions_excel(request):
+    """
+    Import des questions régulières (Question model) depuis un fichier Excel.
+    Colonnes requises: texte, type_question, matiere_nom, lecon_nom
+    Colonnes optionnelles: choix_a, choix_b, choix_c, choix_d, bonne_reponse, explication, reponse_attendue
+    """
+    if 'file' not in request.FILES:
+        return Response({
+            'success': False,
+            'error': 'Aucun fichier fourni'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    uploaded_file = request.FILES['file']
+    
+    if not uploaded_file.name.endswith(('.xlsx', '.xls')):
+        return Response({
+            'success': False,
+            'error': 'Format de fichier non supporté. Utilisez un fichier Excel (.xlsx ou .xls)'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        import tempfile
+        import pandas as pd
+        
+        # Créer un fichier temporaire
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+            for chunk in uploaded_file.chunks():
+                tmp_file.write(chunk)
+            tmp_file_path = tmp_file.name
+        
+        # Lire le fichier Excel
+        df = pd.read_excel(tmp_file_path)
+        
+        # Validation des colonnes requises
+        colonnes_requises = ['texte', 'type_question', 'matiere_nom', 'lecon_nom']
+        colonnes_manquantes = [col for col in colonnes_requises if col not in df.columns]
+        
+        if colonnes_manquantes:
+            os.unlink(tmp_file_path)
+            return Response({
+                'success': False,
+                'error': f'Colonnes manquantes: {", ".join(colonnes_manquantes)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        questions_importees = 0
+        questions_echouees = 0
+        erreurs = []
+        
+        for index, row in df.iterrows():
+            try:
+                matiere_nom = str(row['matiere_nom']).strip()
+                lecon_nom = str(row['lecon_nom']).strip()
+                
+                # Trouver ou créer la matière
+                matiere = Matiere.objects.filter(nom__iexact=matiere_nom).first()
+                if not matiere:
+                    erreurs.append(f"Ligne {index+2}: Matière '{matiere_nom}' non trouvée")
+                    questions_echouees += 1
+                    continue
+                
+                # Trouver ou créer la leçon
+                lecon = Lecon.objects.filter(nom__iexact=lecon_nom, matiere=matiere).first()
+                if not lecon:
+                    # Créer la leçon si elle n'existe pas
+                    lecon = Lecon.objects.create(nom=lecon_nom, matiere=matiere)
+                    logger.info(f"Leçon créée: {lecon_nom} pour matière {matiere_nom}")
+                
+                # Créer la question
+                question = Question.objects.create(
+                    texte=str(row['texte']).strip(),
+                    type_question=row['type_question'],
+                    matiere=matiere,
+                    lecon=lecon,
+                    explication=str(row.get('explication', '')).strip() if pd.notna(row.get('explication')) else None,
+                    reponse_attendue=str(row.get('reponse_attendue', '')).strip() if pd.notna(row.get('reponse_attendue')) else None
+                )
+                
+                # Créer les choix pour les QCM
+                if row['type_question'] in ['choix_unique', 'choix_multiple']:
+                    bonne_reponse = str(row.get('bonne_reponse', '')).upper().strip() if pd.notna(row.get('bonne_reponse')) else ''
+                    
+                    choix_mapping = [
+                        ('choix_a', 'A'),
+                        ('choix_b', 'B'),
+                        ('choix_c', 'C'),
+                        ('choix_d', 'D')
+                    ]
+                    
+                    for col_name, lettre in choix_mapping:
+                        if pd.notna(row.get(col_name)) and str(row[col_name]).strip():
+                            est_correct = lettre in bonne_reponse
+                            Choix.objects.create(
+                                question=question,
+                                texte=str(row[col_name]).strip(),
+                                est_correct=est_correct
+                            )
+                
+                elif row['type_question'] == 'vrai_faux':
+                    bonne_reponse = str(row.get('bonne_reponse', '')).upper().strip() if pd.notna(row.get('bonne_reponse')) else ''
+                    Choix.objects.create(question=question, texte='Vrai', est_correct=(bonne_reponse == 'VRAI'))
+                    Choix.objects.create(question=question, texte='Faux', est_correct=(bonne_reponse == 'FAUX'))
+                
+                questions_importees += 1
+                
+            except Exception as e:
+                erreurs.append(f"Ligne {index+2}: {str(e)}")
+                questions_echouees += 1
+        
+        # Nettoyer le fichier temporaire
+        os.unlink(tmp_file_path)
+        
+        return Response({
+            'success': True,
+            'rapport': {
+                'questions_importees': questions_importees,
+                'questions_echouees': questions_echouees,
+                'erreurs': erreurs[:20]  # Limiter à 20 erreurs
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f'Erreur import questions Excel: {e}')
+        if 'tmp_file_path' in locals():
+            try:
+                os.unlink(tmp_file_path)
+            except:
+                pass
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def template_excel_questions(request):
+    """
+    Génère un template Excel pour l'import des questions régulières.
+    """
+    import pandas as pd
+    from django.http import HttpResponse
+    import io
+    
+    # Créer un DataFrame avec les colonnes requises et des exemples
+    data = {
+        'texte': ['Quelle est la capitale de la France ?', 'Le soleil tourne autour de la terre.', 'Quels sont les océans ?'],
+        'type_question': ['choix_unique', 'vrai_faux', 'choix_multiple'],
+        'matiere_nom': ['Culture Générale', 'Sciences', 'Géographie'],
+        'lecon_nom': ['Géographie mondiale', 'Astronomie', 'Les océans'],
+        'choix_a': ['Paris', '', 'Atlantique'],
+        'choix_b': ['Londres', '', 'Pacifique'],
+        'choix_c': ['Berlin', '', 'Indien'],
+        'choix_d': ['Madrid', '', 'Arctique'],
+        'bonne_reponse': ['A', 'FAUX', 'A,B,C,D'],
+        'explication': ['Paris est la capitale de la France depuis...', 'C\'est la Terre qui tourne autour du Soleil.', 'Il y a 5 océans principaux.'],
+        'reponse_attendue': ['', '', '']
+    }
+    
+    df = pd.DataFrame(data)
+    
+    # Créer le fichier Excel en mémoire
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Questions')
+    
+    output.seek(0)
+    
+    response = HttpResponse(
+        output.read(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename=template_import_questions.xlsx'
+    
+    return response
