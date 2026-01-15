@@ -262,9 +262,14 @@ class QuestionCreateUpdateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Question
-        fields = '__all__'
+        fields = ['id', 'texte', 'matiere', 'lecon', 'type_question', 'explication', 
+                  'reponse_attendue', 'correction_mode', 'date_ajout', 'temps_limite', 
+                  'choix_concours', 'choix']
         extra_kwargs = {
-            'choix_concours': {'required': False}
+            'choix_concours': {'required': False},
+            'date_ajout': {'required': False},
+            'temps_limite': {'required': False},
+            'correction_mode': {'required': False}
         }
         
     def validate(self, data):
