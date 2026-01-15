@@ -258,6 +258,7 @@ class QuestionCreateUpdateSerializer(serializers.ModelSerializer):
     """Serializer pour la création/modification des questions avec IDs"""
     matiere = serializers.PrimaryKeyRelatedField(queryset=Matiere.objects.all())
     lecon = serializers.PrimaryKeyRelatedField(queryset=Lecon.objects.all(), required=False, allow_null=True)
+    choix = serializers.ListField(child=serializers.DictField(), required=False, write_only=True)
     
     class Meta:
         model = Question
@@ -278,6 +279,47 @@ class QuestionCreateUpdateSerializer(serializers.ModelSerializer):
             })
             
         return data
+    
+    def create(self, validated_data):
+        """Créer une question avec ses choix"""
+        choix_data = validated_data.pop('choix', [])
+        question = Question.objects.create(**validated_data)
+        
+        # Créer les choix associés
+        for choix_item in choix_data:
+            Choix.objects.create(
+                question=question,
+                texte=choix_item.get('texte', ''),
+                est_correct=choix_item.get('est_correct', False),
+                explication=choix_item.get('explication', '')
+            )
+        
+        return question
+    
+    def update(self, instance, validated_data):
+        """Mettre à jour une question et ses choix"""
+        choix_data = validated_data.pop('choix', None)
+        
+        # Mettre à jour les champs de la question
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Si des choix sont fournis, les mettre à jour
+        if choix_data is not None:
+            # Supprimer les anciens choix
+            instance.choix.all().delete()
+            
+            # Créer les nouveaux choix
+            for choix_item in choix_data:
+                Choix.objects.create(
+                    question=instance,
+                    texte=choix_item.get('texte', ''),
+                    est_correct=choix_item.get('est_correct', False),
+                    explication=choix_item.get('explication', '')
+                )
+        
+        return instance
 
 class ChoixSerializer(serializers.ModelSerializer):
     class Meta:
