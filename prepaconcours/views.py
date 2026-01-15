@@ -216,12 +216,19 @@ class SessionQuizViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
+        logger.info(f"[SESSION QUIZ CREATE] Données reçues: {request.data}")
+        logger.info(f"[SESSION QUIZ CREATE] User: {request.user}")
+        
         data = request.data.copy()
         choix_concours = data.get('choix_concours')
         if choix_concours == 'fonction_publique':
             data['cycle'] = None
+        
         serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            logger.error(f"[SESSION QUIZ CREATE] Erreurs de validation: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
         self.perform_create(serializer)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -4117,24 +4124,61 @@ def check_questions_disponibles(request):
     """
     matiere_id = request.query_params.get('matiere_id')
     lecon_id = request.query_params.get('lecon_id')
+    lecon_nom = request.query_params.get('lecon_nom')
     
     result = {
         'matiere_id': matiere_id,
         'lecon_id': lecon_id,
+        'lecon_nom': lecon_nom,
         'questions_count': 0,
         'questions_avec_choix': 0,
+        'lecons_disponibles': [],
         'details': []
     }
     
     try:
+        # Si on cherche par nom de leçon
+        if lecon_nom:
+            lecons = Lecon.objects.filter(nom__icontains=lecon_nom)
+            result['lecons_trouvees'] = [
+                {'id': l.id, 'nom': l.nom, 'matiere_id': l.matiere_id, 'matiere_nom': l.matiere.nom}
+                for l in lecons
+            ]
+            if lecons.exists():
+                lecon_id = lecons.first().id
+                result['lecon_id_utilise'] = lecon_id
+        
+        # Lister toutes les leçons pour la matière
+        if matiere_id:
+            lecons_matiere = Lecon.objects.filter(matiere_id=matiere_id)
+            result['lecons_disponibles'] = [
+                {'id': l.id, 'nom': l.nom, 'nb_questions': Question.objects.filter(lecon=l).count()}
+                for l in lecons_matiere
+            ]
+        
         if lecon_id:
             questions = Question.objects.filter(lecon_id=lecon_id).prefetch_related('choix')
             result['filter'] = f'lecon_id={lecon_id}'
+            # Récupérer les infos de la leçon
+            try:
+                lecon = Lecon.objects.get(id=lecon_id)
+                result['lecon_info'] = {
+                    'id': lecon.id,
+                    'nom': lecon.nom,
+                    'matiere_id': lecon.matiere_id,
+                    'matiere_nom': lecon.matiere.nom
+                }
+            except Lecon.DoesNotExist:
+                result['lecon_info'] = 'Leçon non trouvée!'
         elif matiere_id:
             questions = Question.objects.filter(matiere_id=matiere_id).prefetch_related('choix')
             result['filter'] = f'matiere_id={matiere_id}'
         else:
-            return Response({'error': 'matiere_id ou lecon_id requis'}, status=400)
+            # Afficher les statistiques globales
+            result['total_questions'] = Question.objects.count()
+            result['questions_avec_lecon'] = Question.objects.exclude(lecon__isnull=True).count()
+            result['questions_sans_lecon'] = Question.objects.filter(lecon__isnull=True).count()
+            return Response(result)
         
         result['questions_count'] = questions.count()
         result['questions_avec_choix'] = sum(1 for q in questions if q.choix.exists())
@@ -4147,12 +4191,14 @@ def check_questions_disponibles(request):
                 'type': q.type_question,
                 'nb_choix': q.choix.count(),
                 'lecon_id': q.lecon_id,
+                'lecon_nom': q.lecon.nom if q.lecon else None,
                 'matiere_id': q.matiere_id
             })
         
         return Response(result)
     except Exception as e:
-        return Response({'error': str(e)}, status=500)
+        import traceback
+        return Response({'error': str(e), 'traceback': traceback.format_exc()}, status=500)
 
 
 @api_view(['POST'])

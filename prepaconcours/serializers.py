@@ -47,7 +47,11 @@ class LeconSerializer(serializers.ModelSerializer):
     
     def get_nb_questions_disponibles(self, obj):
         """Calcule le nombre de questions disponibles pour cette leçon"""
-        return Question.objects.filter(lecon=obj).count()
+        count = Question.objects.filter(lecon=obj).count()
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[LECON SERIALIZER] Leçon '{obj.nom}' (id={obj.id}, matiere_id={obj.matiere_id}) -> {count} questions")
+        return count
 
 class ContenuPedagogiqueSerializer(serializers.ModelSerializer):
     matiere_nom = serializers.CharField(source='matiere.nom', read_only=True)
