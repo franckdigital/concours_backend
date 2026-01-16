@@ -264,6 +264,7 @@ class Question(models.Model):
         ('regex', 'Regex'),
     ]
     texte = models.TextField()
+    image_base64 = models.TextField(null=True, blank=True, help_text="Image de la question encodée en base64 (pour les questions de logique)")
     matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, related_name='questions')
     # Remplacement du champ niveau par une relation avec Lecon
     lecon = models.ForeignKey(Lecon, on_delete=models.CASCADE, related_name='questions', null=True, blank=True, help_text="Leçon à laquelle appartient cette question")

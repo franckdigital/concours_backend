@@ -4270,12 +4270,18 @@ def import_questions_excel(request):
                     lecon = Lecon.objects.create(nom=lecon_nom, matiere=matiere)
                     logger.info(f"Leçon créée: {lecon_nom} pour matière {matiere_nom}")
                 
+                # Récupérer l'image base64 si présente
+                image_base64 = None
+                if pd.notna(row.get('image_base64')) and str(row.get('image_base64', '')).strip():
+                    image_base64 = str(row['image_base64']).strip()
+                
                 # Créer la question
                 question = Question.objects.create(
                     texte=str(row['texte']).strip(),
                     type_question=row['type_question'],
                     matiere=matiere,
                     lecon=lecon,
+                    image_base64=image_base64,
                     explication=str(row.get('explication', '')).strip() if pd.notna(row.get('explication')) else None,
                     reponse_attendue=str(row.get('reponse_attendue', '')).strip() if pd.notna(row.get('reponse_attendue')) else None
                 )
@@ -4348,17 +4354,18 @@ def template_excel_questions(request):
     
     # Créer un DataFrame avec les colonnes requises et des exemples
     data = {
-        'texte': ['Quelle est la capitale de la France ?', 'Le soleil tourne autour de la terre.', 'Quels sont les océans ?'],
-        'type_question': ['choix_unique', 'vrai_faux', 'choix_multiple'],
-        'matiere_nom': ['Culture Générale', 'Sciences', 'Géographie'],
-        'lecon_nom': ['Géographie mondiale', 'Astronomie', 'Les océans'],
-        'choix_a': ['Paris', '', 'Atlantique'],
-        'choix_b': ['Londres', '', 'Pacifique'],
-        'choix_c': ['Berlin', '', 'Indien'],
-        'choix_d': ['Madrid', '', 'Arctique'],
-        'bonne_reponse': ['A', 'FAUX', 'A,B,C,D'],
-        'explication': ['Paris est la capitale de la France depuis...', 'C\'est la Terre qui tourne autour du Soleil.', 'Il y a 5 océans principaux.'],
-        'reponse_attendue': ['', '', '']
+        'texte': ['Quelle est la capitale de la France ?', 'Le soleil tourne autour de la terre.', 'Quels sont les océans ?', 'Trouvez le nombre manquant dans la série'],
+        'type_question': ['choix_unique', 'vrai_faux', 'choix_multiple', 'choix_unique'],
+        'matiere_nom': ['Culture Générale', 'Sciences', 'Géographie', 'Logique numérique'],
+        'lecon_nom': ['Géographie mondiale', 'Astronomie', 'Les océans', 'Séries numériques'],
+        'choix_a': ['Paris', '', 'Atlantique', '25'],
+        'choix_b': ['Londres', '', 'Pacifique', '30'],
+        'choix_c': ['Berlin', '', 'Indien', '35'],
+        'choix_d': ['Madrid', '', 'Arctique', '40'],
+        'bonne_reponse': ['A', 'FAUX', 'A,B,C,D', 'A'],
+        'explication': ['Paris est la capitale de la France depuis...', 'C\'est la Terre qui tourne autour du Soleil.', 'Il y a 5 océans principaux.', 'La suite suit le pattern +5'],
+        'reponse_attendue': ['', '', '', ''],
+        'image_base64': ['', '', '', 'data:image/png;base64,... (collez ici l\'image encodée en base64)']
     }
     
     df = pd.DataFrame(data)

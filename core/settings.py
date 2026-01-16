@@ -177,7 +177,8 @@ DATABASES = {
          'ENGINE': 'django.db.backends.mysql',
          'NAME': 'concours',
          'USER': 'root',
-         'PASSWORD': 'xamil@IFE2025',
+         #'PASSWORD': 'xamil@IFE2025',
+         'PASSWORD': '',
          'HOST': 'localhost',
          'PORT': '3306',
          'OPTIONS': {
