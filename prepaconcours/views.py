@@ -1450,6 +1450,7 @@ class ImportExcelViewSet(viewsets.ModelViewSet):
             import_type = 'questions'
         
         print(f"import_type déterminé: {import_type}", file=sys.stderr)
+        print(f"Colonnes du fichier Excel: {df.columns.tolist()}", file=sys.stderr)
         
         try:
             # Vérifier le type MIME du fichier
@@ -1463,13 +1464,18 @@ class ImportExcelViewSet(viewsets.ModelViewSet):
             is_preview = (request.data.get('preview', 'false').lower() == 'true' or 
                          request.path.endswith('/preview/'))
             
+            print(f"is_preview: {is_preview}", file=sys.stderr)
+            
             if import_type == 'questions':
                 # Vérifier les colonnes requises pour les questions ENA (avec leçons)
                 required_columns = ['texte_question', 'matiere_nom', 'lecon_nom', 'type_question']
+                print(f"Colonnes requises: {required_columns}", file=sys.stderr)
                 missing_columns = [col for col in required_columns if col not in df.columns]
+                print(f"Colonnes manquantes: {missing_columns}", file=sys.stderr)
                 if missing_columns:
+                    print(f"!!! ERREUR: Colonnes manquantes: {missing_columns}", file=sys.stderr)
                     return Response(
-                        {'detail': f'Colonnes manquantes dans le fichier Excel: {", ".join(missing_columns)}'},
+                        {'detail': f'Colonnes manquantes dans le fichier Excel: {", ".join(missing_columns)}. Colonnes présentes: {", ".join(df.columns.tolist())}'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                     
