@@ -4584,7 +4584,23 @@ class PaiementViewSet(viewsets.ViewSet):
                 timeout=30
             )
             
-            result = response.json()
+            logger.info(f"[CINETPAY] Status code: {response.status_code}")
+            logger.info(f"[CINETPAY] Réponse brute: {response.text[:500] if response.text else 'VIDE'}")
+            
+            # Vérifier si la réponse est vide
+            if not response.text:
+                transaction.statut = 'failed'
+                transaction.save()
+                return Response({'detail': 'CinetPay a retourné une réponse vide'}, status=502)
+            
+            try:
+                result = response.json()
+            except ValueError as json_err:
+                logger.error(f"[CINETPAY] Erreur JSON: {json_err}, Réponse: {response.text[:200]}")
+                transaction.statut = 'failed'
+                transaction.save()
+                return Response({'detail': 'Réponse CinetPay invalide'}, status=502)
+            
             logger.info(f"[CINETPAY] Réponse initiation: {result}")
             
             if result.get('code') == '201':
