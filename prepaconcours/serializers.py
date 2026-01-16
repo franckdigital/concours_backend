@@ -235,7 +235,7 @@ class QuestionDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Question
         fields = [
-            'id', 'matiere', 'matiere_nom', 'texte', 'type_question', 
+            'id', 'matiere', 'matiere_nom', 'texte', 'image_base64', 'type_question', 
             'reponse_attendue', 'explication', 'correction_mode',
             'temps_limite', 'date_ajout', 'choix'
         ]
