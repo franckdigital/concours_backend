@@ -3892,18 +3892,39 @@ class SessionCompositionViewSet(viewsets.ModelViewSet):
                 'logique_combinee': 40
             }
             
+            # Noms des matières pour les questions de démo
+            noms_matieres = {
+                'culture_aptitude': 'Culture générale et Aptitude verbale',
+                'anglais': 'Anglais',
+                'logique_combinee': 'Logique d\'organisation et Logique numérique'
+            }
+            
             nombre_questions = nombres_questions.get(session.matiere_combinee, 40)
+            nom_matiere = noms_matieres.get(session.matiere_combinee, session.matiere_combinee)
             
             # Récupérer les questions aléatoirement
             questions = QuestionExamen.objects.filter(
-                matiere_combinee=session.matiere_combinee
+                matiere_combinee=session.matiere_combinee,
+                active=True
             ).order_by('?')[:nombre_questions]
             
+            # Si aucune question n'existe, générer des questions de démonstration
             if not questions.exists():
-                return Response(
-                    {'error': f'Aucune question trouvée pour la matière {session.matiere_combinee}'}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                logger.warning(f'Aucune question trouvée pour {session.matiere_combinee}, génération de questions de démonstration')
+                questions_data = []
+                for i in range(nombre_questions):
+                    questions_data.append({
+                        'id': i + 1,
+                        'texte_question': f'Question {i + 1} de {nom_matiere} (démonstration)',
+                        'type_question': 'choix_unique',
+                        'choix': [
+                            {'id': 'a', 'texte_choix': 'Option A', 'est_correcte': True},
+                            {'id': 'b', 'texte_choix': 'Option B', 'est_correcte': False},
+                            {'id': 'c', 'texte_choix': 'Option C', 'est_correcte': False},
+                            {'id': 'd', 'texte_choix': 'Option D', 'est_correcte': False},
+                        ]
+                    })
+                return Response(questions_data)
             
             # Sérialiser les questions avec les choix
             questions_data = []
@@ -3931,6 +3952,11 @@ class SessionCompositionViewSet(viewsets.ModelViewSet):
             
             return Response(questions_data)
             
+        except SessionComposition.DoesNotExist:
+            return Response(
+                {'error': 'Session non trouvée'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
             logger.error(f'Erreur récupération questions composition: {e}')
             return Response(
