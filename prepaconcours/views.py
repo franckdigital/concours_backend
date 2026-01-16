@@ -1562,28 +1562,50 @@ class ImportExcelViewSet(viewsets.ModelViewSet):
                     # Gestion des choix pour les QCM
                     if question_data['type_question'] in ['choix_unique', 'choix_multiple']:
                         print(f"  Recherche des choix pour une question de type {question_data['type_question']}...")
-                        for i in range(1, 11):  # Jusqu'à 10 choix
-                            choix_texte = row.get(f'choix_{i}')
+                        
+                        # Récupérer la bonne réponse (format: A, B, C, D ou a, b, c, d)
+                        bonne_reponse = clean_value(row.get('bonne_reponse', ''), 'bonne_reponse').upper().strip()
+                        print(f"  - Bonne réponse indiquée: {bonne_reponse}")
+                        
+                        # Support pour format choix_a, choix_b, choix_c, choix_d
+                        lettres = ['a', 'b', 'c', 'd', 'e']
+                        for lettre in lettres:
+                            choix_texte = row.get(f'choix_{lettre}')
                             if pd.notna(choix_texte) and str(choix_texte).strip():
-                                print(f"  - Choix {i} trouvé: {str(choix_texte)[:50]}...")
-                                # Récupérer l'explication du choix, avec une valeur par défaut vide si non fournie
-                                explication = clean_value(row.get(f'choix_{i}_explication', ''), f'choix_{i}_explication')
+                                print(f"  - Choix {lettre.upper()} trouvé: {str(choix_texte)[:50]}...")
+                                explication = clean_value(row.get(f'choix_{lettre}_explication', ''), f'choix_{lettre}_explication')
                                 
-                                # Pour les questions à choix unique, s'assurer qu'un seul choix est marqué comme correct
-                                est_correct = False
-                                if question_data['type_question'] == 'choix_unique':
-                                    # Si c'est le premier choix marqué comme correct ou si c'est explicitement marqué comme correct
-                                    est_correct = (i == 1 and not any(c.get('est_correct', False) for c in question_data['choix'])) or \
-                                                row.get(f'choix_{i}_correct', False) in [True, 'oui', 'Oui', 'OUI', 'vrai', 'Vrai', 'VRAI', '1', 1]
-                                else:
-                                    # Pour les choix multiples, accepter différentes valeurs pour indiquer un choix correct
-                                    est_correct = row.get(f'choix_{i}_correct', False) in [True, 'oui', 'Oui', 'OUI', 'vrai', 'Vrai', 'VRAI', '1', 1]
+                                # Déterminer si ce choix est correct basé sur bonne_reponse
+                                est_correct = (lettre.upper() == bonne_reponse)
                                 
                                 question_data['choix'].append({
                                     'texte': clean_value(choix_texte),
                                     'est_correct': est_correct,
                                     'explication': explication
                                 })
+                        
+                        # Fallback: Support pour format choix_1, choix_2, etc. si aucun choix_a/b/c/d trouvé
+                        if not question_data['choix']:
+                            for i in range(1, 11):  # Jusqu'à 10 choix
+                                choix_texte = row.get(f'choix_{i}')
+                                if pd.notna(choix_texte) and str(choix_texte).strip():
+                                    print(f"  - Choix {i} trouvé: {str(choix_texte)[:50]}...")
+                                    explication = clean_value(row.get(f'choix_{i}_explication', ''), f'choix_{i}_explication')
+                                    
+                                    est_correct = False
+                                    if question_data['type_question'] == 'choix_unique':
+                                        est_correct = (i == 1 and not any(c.get('est_correct', False) for c in question_data['choix'])) or \
+                                                    row.get(f'choix_{i}_correct', False) in [True, 'oui', 'Oui', 'OUI', 'vrai', 'Vrai', 'VRAI', '1', 1]
+                                    else:
+                                        est_correct = row.get(f'choix_{i}_correct', False) in [True, 'oui', 'Oui', 'OUI', 'vrai', 'Vrai', 'VRAI', '1', 1]
+                                    
+                                    question_data['choix'].append({
+                                        'texte': clean_value(choix_texte),
+                                        'est_correct': est_correct,
+                                        'explication': explication
+                                    })
+                        
+                        print(f"  - Total choix trouvés: {len(question_data['choix'])}")
                     
                     questions_data.append(question_data)
                 
