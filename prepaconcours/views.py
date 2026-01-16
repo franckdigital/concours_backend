@@ -4553,7 +4553,7 @@ class PaiementViewSet(viewsets.ViewSet):
             "customer_name": request.user.nom_complet or request.user.email,
             "customer_surname": "",
             "customer_email": request.user.email,
-            "customer_phone_number": telephone or request.user.numero_telephone or "",
+            "customer_phone_number": telephone or request.user.telephone or "",
             "customer_address": "",
             "customer_city": "Douala",
             "customer_country": "CM",
