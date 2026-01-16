@@ -4482,6 +4482,54 @@ class PaiementViewSet(viewsets.ViewSet):
         except Plan.DoesNotExist:
             return Response({'detail': 'Plan invalide'}, status=400)
         
+        # 🆓 Gestion des plans gratuits (prix = 0)
+        if plan.prix == 0:
+            # Créer directement l'abonnement sans passer par CinetPay
+            from datetime import timedelta
+            from django.utils import timezone
+            
+            # Calculer la date de fin selon la durée du plan
+            date_debut = timezone.now()
+            if plan.duree == '24h':
+                date_fin = date_debut + timedelta(hours=24)
+            elif plan.duree == '1_mois':
+                date_fin = date_debut + timedelta(days=30)
+            elif plan.duree == '12_mois':
+                date_fin = date_debut + timedelta(days=365)
+            else:
+                date_fin = date_debut + timedelta(hours=24)
+            
+            # Désactiver les anciens abonnements
+            Abonnement.objects.filter(utilisateur=request.user, est_actif=True).update(est_actif=False)
+            
+            # Créer le nouvel abonnement
+            abonnement = Abonnement.objects.create(
+                utilisateur=request.user,
+                plan=plan,
+                date_debut=date_debut,
+                date_fin=date_fin,
+                est_actif=True
+            )
+            
+            # Créer une transaction pour traçabilité
+            transaction_id = f"PREPA-FREE-{uuid.uuid4().hex[:8].upper()}"
+            Transaction.objects.create(
+                utilisateur=request.user,
+                plan=plan,
+                transaction_id=transaction_id,
+                montant=0,
+                statut='completed'
+            )
+            
+            logger.info(f"[PLAN GRATUIT] Abonnement activé pour {request.user.email}: {plan.nom}")
+            
+            return Response({
+                'success': True,
+                'message': f'Plan {plan.nom} activé avec succès !',
+                'abonnement_id': abonnement.id,
+                'date_fin': date_fin.isoformat()
+            })
+        
         # Générer un ID de transaction unique
         transaction_id = f"PREPA-{uuid.uuid4().hex[:12].upper()}"
         
