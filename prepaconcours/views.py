@@ -4500,7 +4500,7 @@ class PaiementViewSet(viewsets.ViewSet):
                 date_fin = date_debut + timedelta(hours=24)
             
             # Désactiver les anciens abonnements
-            Abonnement.objects.filter(utilisateur=request.user, est_actif=True).update(est_actif=False)
+            Abonnement.objects.filter(utilisateur=request.user, statut='actif').update(statut='annule')
             
             # Créer le nouvel abonnement
             abonnement = Abonnement.objects.create(
@@ -4508,7 +4508,7 @@ class PaiementViewSet(viewsets.ViewSet):
                 plan=plan,
                 date_debut=date_debut,
                 date_fin=date_fin,
-                est_actif=True
+                statut='actif'
             )
             
             # Créer une transaction pour traçabilité
@@ -4518,7 +4518,7 @@ class PaiementViewSet(viewsets.ViewSet):
                 plan=plan,
                 transaction_id=transaction_id,
                 montant=0,
-                statut='completed'
+                statut='success'
             )
             
             logger.info(f"[PLAN GRATUIT] Abonnement activé pour {request.user.email}: {plan.nom}")
