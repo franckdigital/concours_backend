@@ -892,3 +892,198 @@ class ReponseComposition(models.Model):
     def __str__(self):
         return f"{self.session_composition.utilisateur.nom_complet} - Q{self.question_examen.id}"
 
+
+# --- Plans d'abonnement ---
+TYPE_PLAN_CHOICES = [
+    ('test', 'Test'),
+    ('basique', 'Basique'),
+    ('premium', 'Premium'),
+    ('annuel', 'Annuel'),
+]
+
+DUREE_PLAN_CHOICES = [
+    ('24h', '24 heures'),
+    ('1_mois', '1 mois'),
+    ('12_mois', '12 mois'),
+]
+
+class Plan(models.Model):
+    """Modèle représentant un plan d'abonnement"""
+    code = models.CharField(max_length=20, choices=TYPE_PLAN_CHOICES, unique=True)
+    nom = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    prix = models.IntegerField(help_text="Prix en FCFA")
+    duree = models.CharField(max_length=20, choices=DUREE_PLAN_CHOICES)
+    
+    # Limites et fonctionnalités
+    questions_par_jour = models.IntegerField(default=0, help_text="0 = illimité")
+    examens_blancs_par_mois = models.IntegerField(default=0, help_text="0 = illimité")
+    acces_ena = models.BooleanField(default=True)
+    acces_fonction_publique = models.BooleanField(default=False)
+    acces_tous_concours = models.BooleanField(default=False)
+    mode_classique = models.BooleanField(default=True)
+    mode_chronometre = models.BooleanField(default=False)
+    statistiques_basiques = models.BooleanField(default=False)
+    statistiques_avancees = models.BooleanField(default=False)
+    corrections_detaillees = models.BooleanField(default=False)
+    support_email = models.BooleanField(default=False)
+    support_prioritaire = models.BooleanField(default=False)
+    support_vip = models.BooleanField(default=False)
+    export_pdf = models.BooleanField(default=False)
+    
+    # Métadonnées
+    est_actif = models.BooleanField(default=True)
+    est_populaire = models.BooleanField(default=False, help_text="Afficher le badge 'Populaire'")
+    ordre_affichage = models.IntegerField(default=0)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['ordre_affichage']
+    
+    def __str__(self):
+        return f"{self.nom} - {self.prix} FCFA"
+
+
+STATUT_ABONNEMENT_CHOICES = [
+    ('actif', 'Actif'),
+    ('expire', 'Expiré'),
+    ('annule', 'Annulé'),
+    ('en_attente', 'En attente de paiement'),
+]
+
+class Abonnement(models.Model):
+    """Modèle représentant l'abonnement d'un utilisateur"""
+    utilisateur = models.ForeignKey(Utilisateur, on_delete=models.CASCADE, related_name='abonnements')
+    plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='abonnements')
+    
+    date_debut = models.DateTimeField(auto_now_add=True)
+    date_fin = models.DateTimeField()
+    statut = models.CharField(max_length=20, choices=STATUT_ABONNEMENT_CHOICES, default='en_attente')
+    
+    # Référence de paiement
+    transaction_id = models.CharField(max_length=100, blank=True, null=True)
+    
+    class Meta:
+        ordering = ['-date_debut']
+    
+    def __str__(self):
+        return f"{self.utilisateur.nom_complet} - {self.plan.nom} ({self.statut})"
+    
+    def est_actif(self):
+        """Vérifie si l'abonnement est encore actif"""
+        return self.statut == 'actif' and self.date_fin > timezone.now()
+    
+    def jours_restants(self):
+        """Retourne le nombre de jours restants"""
+        if not self.est_actif():
+            return 0
+        delta = self.date_fin - timezone.now()
+        return max(0, delta.days)
+    
+    @classmethod
+    def get_abonnement_actif(cls, utilisateur):
+        """Récupère l'abonnement actif de l'utilisateur"""
+        return cls.objects.filter(
+            utilisateur=utilisateur,
+            statut='actif',
+            date_fin__gt=timezone.now()
+        ).first()
+
+
+STATUT_TRANSACTION_CHOICES = [
+    ('pending', 'En attente'),
+    ('success', 'Succès'),
+    ('failed', 'Échoué'),
+    ('cancelled', 'Annulé'),
+]
+
+class Transaction(models.Model):
+    """Modèle pour suivre les transactions de paiement CinetPay"""
+    utilisateur = models.ForeignKey(Utilisateur, on_delete=models.CASCADE, related_name='transactions')
+    plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='transactions')
+    abonnement = models.ForeignKey(Abonnement, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
+    
+    # Informations CinetPay
+    transaction_id = models.CharField(max_length=100, unique=True, help_text="ID unique de la transaction")
+    cinetpay_transaction_id = models.CharField(max_length=100, blank=True, null=True, help_text="ID CinetPay")
+    payment_token = models.CharField(max_length=255, blank=True, null=True)
+    payment_url = models.URLField(blank=True, null=True)
+    
+    # Montant et statut
+    montant = models.IntegerField(help_text="Montant en FCFA")
+    devise = models.CharField(max_length=10, default='XAF')
+    statut = models.CharField(max_length=20, choices=STATUT_TRANSACTION_CHOICES, default='pending')
+    
+    # Métadonnées
+    methode_paiement = models.CharField(max_length=50, blank=True, null=True, help_text="Mobile Money, Carte, etc.")
+    telephone = models.CharField(max_length=20, blank=True, null=True)
+    
+    # Réponse CinetPay
+    cinetpay_response = models.JSONField(blank=True, null=True)
+    
+    # Dates
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+    date_paiement = models.DateTimeField(blank=True, null=True)
+    
+    class Meta:
+        ordering = ['-date_creation']
+    
+    def __str__(self):
+        return f"{self.transaction_id} - {self.utilisateur.nom_complet} - {self.montant} FCFA ({self.statut})"
+
+
+class QuotaUtilisation(models.Model):
+    """Modèle pour suivre l'utilisation quotidienne des questions"""
+    utilisateur = models.ForeignKey(Utilisateur, on_delete=models.CASCADE, related_name='quotas_utilisation')
+    date = models.DateField(default=timezone.now)
+    questions_utilisees = models.IntegerField(default=0)
+    examens_blancs_utilises = models.IntegerField(default=0)
+    
+    class Meta:
+        unique_together = ('utilisateur', 'date')
+        ordering = ['-date']
+    
+    def __str__(self):
+        return f"{self.utilisateur.nom_complet} - {self.date} - {self.questions_utilisees} questions"
+    
+    @classmethod
+    def get_ou_creer_quota_jour(cls, utilisateur):
+        """Récupère ou crée le quota du jour pour un utilisateur"""
+        today = timezone.now().date()
+        quota, created = cls.objects.get_or_create(
+            utilisateur=utilisateur,
+            date=today,
+            defaults={'questions_utilisees': 0, 'examens_blancs_utilises': 0}
+        )
+        return quota
+    
+    @classmethod
+    def incrementer_questions(cls, utilisateur, nombre=1):
+        """Incrémente le compteur de questions utilisées"""
+        quota = cls.get_ou_creer_quota_jour(utilisateur)
+        quota.questions_utilisees += nombre
+        quota.save()
+        return quota.questions_utilisees
+    
+    @classmethod
+    def peut_poser_question(cls, utilisateur):
+        """Vérifie si l'utilisateur peut encore poser des questions aujourd'hui"""
+        abonnement = Abonnement.get_abonnement_actif(utilisateur)
+        
+        if not abonnement:
+            return False, "Aucun abonnement actif"
+        
+        plan = abonnement.plan
+        
+        # Si illimité (0 = illimité)
+        if plan.questions_par_jour == 0:
+            return True, "Illimité"
+        
+        quota = cls.get_ou_creer_quota_jour(utilisateur)
+        
+        if quota.questions_utilisees >= plan.questions_par_jour:
+            return False, f"Limite quotidienne atteinte ({plan.questions_par_jour} questions)"
+        
+        return True, f"{plan.questions_par_jour - quota.questions_utilisees} questions restantes"
+

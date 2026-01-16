@@ -21,7 +21,10 @@ from .views import (
     # Endpoints pour l'import des questions régulières
     import_questions_excel, template_excel_questions,
     # Debug endpoint
-    check_questions_disponibles
+    check_questions_disponibles,
+    # ViewSets pour les abonnements et paiements
+    PlanViewSet, AbonnementViewSet, TransactionViewSet, PaiementViewSet,
+    cinetpay_webhook, cinetpay_retour
 )
 from .views_auth import login_view, profile_view
 # Import des vues IA
@@ -64,6 +67,12 @@ router.register(r'questions-examen', QuestionExamenViewSet, basename='questions_
 
 # Routes pour les compositions nationales
 router.register(r'sessions_composition', SessionCompositionViewSet, basename='sessions_composition')
+
+# Routes pour les abonnements et paiements
+router.register(r'plans', PlanViewSet, basename='plans')
+router.register(r'abonnements', AbonnementViewSet, basename='abonnements')
+router.register(r'transactions', TransactionViewSet, basename='transactions')
+router.register(r'paiement', PaiementViewSet, basename='paiement')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -108,5 +117,9 @@ urlpatterns = [
     # Endpoints d'authentification Ma Caisse (priorité haute)
     path('auth/login/', login_view, name='auth-login'),
     path('auth/profile/', profile_view, name='auth-profile'),
+    
+    # Endpoints CinetPay (webhook et retour)
+    path('paiement/webhook/', cinetpay_webhook, name='cinetpay_webhook'),
+    path('paiement/retour/', cinetpay_retour, name='cinetpay_retour'),
     
 ]

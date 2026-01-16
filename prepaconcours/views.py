@@ -4384,3 +4384,376 @@ def template_excel_questions(request):
     response['Content-Disposition'] = f'attachment; filename=template_import_questions.xlsx'
     
     return response
+
+
+# === ViewSets pour les abonnements ===
+
+from .models import Plan, Abonnement, Transaction, QuotaUtilisation
+from .serializers import (
+    PlanSerializer, AbonnementSerializer, TransactionSerializer,
+    InitierPaiementSerializer, QuotaUtilisationSerializer, StatutAbonnementSerializer
+)
+import uuid
+import requests
+import hashlib
+
+# Configuration CinetPay
+CINETPAY_API_KEY = "81368248165f9bc085b6f97.83290781"
+CINETPAY_SITE_ID = "5866272"
+CINETPAY_SECRET_KEY = "1905618043656f094465a831.25769262"
+CINETPAY_BASE_URL = "https://api-checkout.cinetpay.com/v2"
+
+
+class PlanViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet pour lister les plans d'abonnement disponibles"""
+    queryset = Plan.objects.filter(est_actif=True)
+    serializer_class = PlanSerializer
+    permission_classes = [permissions.AllowAny]  # Plans visibles par tous
+    
+    def get_queryset(self):
+        return Plan.objects.filter(est_actif=True).order_by('ordre_affichage')
+
+
+class AbonnementViewSet(viewsets.ModelViewSet):
+    """ViewSet pour gérer les abonnements utilisateur"""
+    serializer_class = AbonnementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        return Abonnement.objects.filter(utilisateur=self.request.user)
+    
+    @action(detail=False, methods=['get'])
+    def actif(self, request):
+        """Récupère l'abonnement actif de l'utilisateur"""
+        abonnement = Abonnement.get_abonnement_actif(request.user)
+        if abonnement:
+            serializer = self.get_serializer(abonnement)
+            return Response(serializer.data)
+        return Response({'detail': 'Aucun abonnement actif'}, status=404)
+    
+    @action(detail=False, methods=['get'])
+    def statut(self, request):
+        """Récupère le statut complet d'abonnement de l'utilisateur"""
+        abonnement = Abonnement.get_abonnement_actif(request.user)
+        
+        peut_poser, message = QuotaUtilisation.peut_poser_question(request.user)
+        quota = QuotaUtilisation.get_ou_creer_quota_jour(request.user)
+        
+        questions_restantes = None
+        if abonnement and abonnement.plan.questions_par_jour > 0:
+            questions_restantes = max(0, abonnement.plan.questions_par_jour - quota.questions_utilisees)
+        
+        data = {
+            'a_abonnement_actif': abonnement is not None,
+            'abonnement': AbonnementSerializer(abonnement).data if abonnement else None,
+            'peut_poser_question': peut_poser,
+            'message_quota': message,
+            'questions_utilisees_aujourdhui': quota.questions_utilisees,
+            'questions_restantes_aujourdhui': questions_restantes
+        }
+        
+        return Response(data)
+
+
+class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet pour consulter l'historique des transactions"""
+    serializer_class = TransactionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        return Transaction.objects.filter(utilisateur=self.request.user)
+
+
+class PaiementViewSet(viewsets.ViewSet):
+    """ViewSet pour gérer les paiements CinetPay"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @action(detail=False, methods=['post'])
+    def initier(self, request):
+        """Initie un paiement CinetPay pour un plan d'abonnement"""
+        serializer = InitierPaiementSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        plan_id = serializer.validated_data['plan_id']
+        telephone = serializer.validated_data.get('telephone', '')
+        
+        try:
+            plan = Plan.objects.get(id=plan_id, est_actif=True)
+        except Plan.DoesNotExist:
+            return Response({'detail': 'Plan invalide'}, status=400)
+        
+        # Générer un ID de transaction unique
+        transaction_id = f"PREPA-{uuid.uuid4().hex[:12].upper()}"
+        
+        # Créer la transaction en base
+        transaction = Transaction.objects.create(
+            utilisateur=request.user,
+            plan=plan,
+            transaction_id=transaction_id,
+            montant=plan.prix,
+            telephone=telephone
+        )
+        
+        # Préparer les données pour CinetPay
+        cinetpay_data = {
+            "apikey": CINETPAY_API_KEY,
+            "site_id": CINETPAY_SITE_ID,
+            "transaction_id": transaction_id,
+            "amount": plan.prix,
+            "currency": "XAF",
+            "description": f"Abonnement {plan.nom} - Prépa Concours",
+            "customer_name": request.user.nom_complet or request.user.email,
+            "customer_surname": "",
+            "customer_email": request.user.email,
+            "customer_phone_number": telephone or request.user.numero_telephone or "",
+            "customer_address": "",
+            "customer_city": "Douala",
+            "customer_country": "CM",
+            "customer_state": "CM",
+            "customer_zip_code": "",
+            "notify_url": "https://api-concours.numerix.digital/api/paiement/webhook/",
+            "return_url": "https://api-concours.numerix.digital/api/paiement/retour/",
+            "channels": "ALL",
+            "metadata": f"plan_id:{plan.id},user_id:{request.user.id}",
+            "lang": "FR",
+            "invoice_data": {
+                "items": [
+                    {
+                        "name": plan.nom,
+                        "quantity": 1,
+                        "unit_price": plan.prix
+                    }
+                ]
+            }
+        }
+        
+        try:
+            # Appel à l'API CinetPay
+            response = requests.post(
+                f"{CINETPAY_BASE_URL}/payment",
+                json=cinetpay_data,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+            
+            result = response.json()
+            logger.info(f"[CINETPAY] Réponse initiation: {result}")
+            
+            if result.get('code') == '201':
+                # Succès - Mise à jour de la transaction
+                payment_data = result.get('data', {})
+                transaction.payment_token = payment_data.get('payment_token')
+                transaction.payment_url = payment_data.get('payment_url')
+                transaction.cinetpay_response = result
+                transaction.save()
+                
+                return Response({
+                    'success': True,
+                    'transaction_id': transaction_id,
+                    'payment_url': payment_data.get('payment_url'),
+                    'payment_token': payment_data.get('payment_token'),
+                    'montant': plan.prix,
+                    'plan': plan.nom
+                })
+            else:
+                # Erreur CinetPay
+                transaction.statut = 'failed'
+                transaction.cinetpay_response = result
+                transaction.save()
+                
+                return Response({
+                    'success': False,
+                    'detail': result.get('message', 'Erreur lors de l\'initiation du paiement'),
+                    'code': result.get('code')
+                }, status=400)
+                
+        except requests.exceptions.Timeout:
+            transaction.statut = 'failed'
+            transaction.save()
+            return Response({'detail': 'Timeout lors de la connexion à CinetPay'}, status=504)
+        except Exception as e:
+            logger.error(f"[CINETPAY] Erreur initiation: {str(e)}")
+            transaction.statut = 'failed'
+            transaction.save()
+            return Response({'detail': f'Erreur: {str(e)}'}, status=500)
+    
+    @action(detail=False, methods=['post'])
+    def verifier(self, request):
+        """Vérifie le statut d'une transaction"""
+        transaction_id = request.data.get('transaction_id')
+        
+        if not transaction_id:
+            return Response({'detail': 'transaction_id requis'}, status=400)
+        
+        try:
+            transaction = Transaction.objects.get(
+                transaction_id=transaction_id,
+                utilisateur=request.user
+            )
+        except Transaction.DoesNotExist:
+            return Response({'detail': 'Transaction non trouvée'}, status=404)
+        
+        # Vérifier le statut auprès de CinetPay
+        check_data = {
+            "apikey": CINETPAY_API_KEY,
+            "site_id": CINETPAY_SITE_ID,
+            "transaction_id": transaction_id
+        }
+        
+        try:
+            response = requests.post(
+                f"{CINETPAY_BASE_URL}/payment/check",
+                json=check_data,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+            
+            result = response.json()
+            logger.info(f"[CINETPAY] Vérification {transaction_id}: {result}")
+            
+            if result.get('code') == '00':
+                data = result.get('data', {})
+                status = data.get('status')
+                
+                if status == 'ACCEPTED':
+                    # Paiement accepté - Activer l'abonnement
+                    self._activer_abonnement(transaction, data)
+                    return Response({
+                        'success': True,
+                        'statut': 'success',
+                        'message': 'Paiement confirmé, abonnement activé'
+                    })
+                elif status == 'REFUSED':
+                    transaction.statut = 'failed'
+                    transaction.cinetpay_response = result
+                    transaction.save()
+                    return Response({
+                        'success': False,
+                        'statut': 'failed',
+                        'message': 'Paiement refusé'
+                    })
+                else:
+                    return Response({
+                        'success': False,
+                        'statut': 'pending',
+                        'message': 'Paiement en attente'
+                    })
+            else:
+                return Response({
+                    'success': False,
+                    'detail': result.get('message', 'Erreur de vérification')
+                }, status=400)
+                
+        except Exception as e:
+            logger.error(f"[CINETPAY] Erreur vérification: {str(e)}")
+            return Response({'detail': f'Erreur: {str(e)}'}, status=500)
+    
+    def _activer_abonnement(self, transaction, cinetpay_data):
+        """Active l'abonnement après paiement réussi"""
+        from datetime import timedelta
+        
+        plan = transaction.plan
+        
+        # Calculer la date de fin selon la durée du plan
+        if plan.duree == '24h':
+            date_fin = timezone.now() + timedelta(hours=24)
+        elif plan.duree == '1_mois':
+            date_fin = timezone.now() + timedelta(days=30)
+        elif plan.duree == '12_mois':
+            date_fin = timezone.now() + timedelta(days=365)
+        else:
+            date_fin = timezone.now() + timedelta(days=30)
+        
+        # Créer l'abonnement
+        abonnement = Abonnement.objects.create(
+            utilisateur=transaction.utilisateur,
+            plan=plan,
+            date_fin=date_fin,
+            statut='actif',
+            transaction_id=transaction.transaction_id
+        )
+        
+        # Mettre à jour la transaction
+        transaction.abonnement = abonnement
+        transaction.statut = 'success'
+        transaction.date_paiement = timezone.now()
+        transaction.methode_paiement = cinetpay_data.get('payment_method', '')
+        transaction.cinetpay_transaction_id = cinetpay_data.get('cpm_trans_id', '')
+        transaction.cinetpay_response = cinetpay_data
+        transaction.save()
+        
+        logger.info(f"[ABONNEMENT] Activé pour {transaction.utilisateur.email} - Plan: {plan.nom}")
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def cinetpay_webhook(request):
+    """Webhook appelé par CinetPay pour notifier le statut du paiement"""
+    logger.info(f"[CINETPAY WEBHOOK] Données reçues: {request.data}")
+    
+    # Récupérer les données du webhook
+    cpm_trans_id = request.data.get('cpm_trans_id')
+    cpm_site_id = request.data.get('cpm_site_id')
+    cpm_trans_status = request.data.get('cpm_trans_status')
+    cpm_custom = request.data.get('cpm_custom')  # Notre transaction_id
+    
+    if not cpm_custom:
+        return Response({'status': 'error', 'message': 'transaction_id manquant'}, status=400)
+    
+    try:
+        transaction = Transaction.objects.get(transaction_id=cpm_custom)
+    except Transaction.DoesNotExist:
+        logger.error(f"[CINETPAY WEBHOOK] Transaction non trouvée: {cpm_custom}")
+        return Response({'status': 'error', 'message': 'Transaction non trouvée'}, status=404)
+    
+    # Vérifier le statut auprès de CinetPay pour confirmer
+    check_data = {
+        "apikey": CINETPAY_API_KEY,
+        "site_id": CINETPAY_SITE_ID,
+        "transaction_id": cpm_custom
+    }
+    
+    try:
+        response = requests.post(
+            f"{CINETPAY_BASE_URL}/payment/check",
+            json=check_data,
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        
+        result = response.json()
+        
+        if result.get('code') == '00':
+            data = result.get('data', {})
+            status = data.get('status')
+            
+            if status == 'ACCEPTED' and transaction.statut != 'success':
+                # Activer l'abonnement
+                paiement_viewset = PaiementViewSet()
+                paiement_viewset._activer_abonnement(transaction, data)
+                logger.info(f"[CINETPAY WEBHOOK] Abonnement activé via webhook: {cpm_custom}")
+            elif status == 'REFUSED':
+                transaction.statut = 'failed'
+                transaction.cinetpay_response = result
+                transaction.save()
+                
+    except Exception as e:
+        logger.error(f"[CINETPAY WEBHOOK] Erreur: {str(e)}")
+    
+    return Response({'status': 'ok'})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def cinetpay_retour(request):
+    """Page de retour après paiement CinetPay"""
+    transaction_id = request.GET.get('transaction_id')
+    
+    # Rediriger vers l'app mobile avec le statut
+    # En production, utiliser un deep link vers l'app
+    return Response({
+        'message': 'Paiement traité',
+        'transaction_id': transaction_id,
+        'instruction': 'Vous pouvez fermer cette page et retourner à l\'application'
+    })
+

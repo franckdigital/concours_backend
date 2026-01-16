@@ -4,7 +4,8 @@ from .models import (
     Tentative, ReponseTentative, Certificat, ImportExcel, SessionQuiz,
     Lecon, ContenuPedagogique, SessionZoomLive,
     Evaluation, ExamenNational, SessionExamen, ParticipationExamen,
-    QuestionExamen, SessionComposition, ReponseComposition
+    QuestionExamen, SessionComposition, ReponseComposition,
+    Plan, Abonnement, Transaction, QuotaUtilisation
 )
 
 class CycleSerializer(serializers.ModelSerializer):
@@ -578,4 +579,109 @@ class ReponseCompositionSerializer(serializers.ModelSerializer):
         model = ReponseComposition
         fields = '__all__'
         read_only_fields = ('date_reponse', 'est_correcte')
+
+
+# === Serializers pour les abonnements ===
+
+class PlanSerializer(serializers.ModelSerializer):
+    """Serializer pour les plans d'abonnement"""
+    duree_display = serializers.CharField(source='get_duree_display', read_only=True)
+    
+    class Meta:
+        model = Plan
+        fields = [
+            'id', 'code', 'nom', 'description', 'prix', 'duree', 'duree_display',
+            'questions_par_jour', 'examens_blancs_par_mois',
+            'acces_ena', 'acces_fonction_publique', 'acces_tous_concours',
+            'mode_classique', 'mode_chronometre',
+            'statistiques_basiques', 'statistiques_avancees',
+            'corrections_detaillees', 'support_email', 'support_prioritaire', 'support_vip',
+            'export_pdf', 'est_actif', 'est_populaire', 'ordre_affichage'
+        ]
+
+
+class AbonnementSerializer(serializers.ModelSerializer):
+    """Serializer pour les abonnements utilisateur"""
+    plan = PlanSerializer(read_only=True)
+    plan_id = serializers.PrimaryKeyRelatedField(
+        queryset=Plan.objects.filter(est_actif=True),
+        source='plan',
+        write_only=True
+    )
+    utilisateur_nom = serializers.CharField(source='utilisateur.nom_complet', read_only=True)
+    est_actif = serializers.SerializerMethodField()
+    jours_restants = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Abonnement
+        fields = [
+            'id', 'utilisateur', 'utilisateur_nom', 'plan', 'plan_id',
+            'date_debut', 'date_fin', 'statut', 'transaction_id',
+            'est_actif', 'jours_restants'
+        ]
+        read_only_fields = ('utilisateur', 'date_debut', 'transaction_id')
+    
+    def get_est_actif(self, obj):
+        return obj.est_actif()
+    
+    def get_jours_restants(self, obj):
+        return obj.jours_restants()
+
+
+class TransactionSerializer(serializers.ModelSerializer):
+    """Serializer pour les transactions de paiement"""
+    plan = PlanSerializer(read_only=True)
+    plan_id = serializers.PrimaryKeyRelatedField(
+        queryset=Plan.objects.filter(est_actif=True),
+        source='plan',
+        write_only=True
+    )
+    utilisateur_nom = serializers.CharField(source='utilisateur.nom_complet', read_only=True)
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+    
+    class Meta:
+        model = Transaction
+        fields = [
+            'id', 'utilisateur', 'utilisateur_nom', 'plan', 'plan_id',
+            'transaction_id', 'cinetpay_transaction_id', 'payment_url',
+            'montant', 'devise', 'statut', 'statut_display',
+            'methode_paiement', 'telephone',
+            'date_creation', 'date_paiement'
+        ]
+        read_only_fields = (
+            'utilisateur', 'transaction_id', 'cinetpay_transaction_id',
+            'payment_url', 'montant', 'devise', 'statut', 'date_creation', 'date_paiement'
+        )
+
+
+class InitierPaiementSerializer(serializers.Serializer):
+    """Serializer pour initier un paiement CinetPay"""
+    plan_id = serializers.IntegerField(required=True)
+    telephone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    
+    def validate_plan_id(self, value):
+        try:
+            plan = Plan.objects.get(id=value, est_actif=True)
+        except Plan.DoesNotExist:
+            raise serializers.ValidationError("Plan invalide ou inactif")
+        return value
+
+
+class QuotaUtilisationSerializer(serializers.ModelSerializer):
+    """Serializer pour les quotas d'utilisation"""
+    
+    class Meta:
+        model = QuotaUtilisation
+        fields = ['id', 'date', 'questions_utilisees', 'examens_blancs_utilises']
+        read_only_fields = ('date',)
+
+
+class StatutAbonnementSerializer(serializers.Serializer):
+    """Serializer pour le statut d'abonnement de l'utilisateur"""
+    a_abonnement_actif = serializers.BooleanField()
+    abonnement = AbonnementSerializer(allow_null=True)
+    peut_poser_question = serializers.BooleanField()
+    message_quota = serializers.CharField()
+    questions_utilisees_aujourdhui = serializers.IntegerField()
+    questions_restantes_aujourdhui = serializers.IntegerField(allow_null=True)
 
