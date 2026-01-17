@@ -4875,3 +4875,169 @@ def cinetpay_retour(request):
         'instruction': 'Vous pouvez fermer cette page et retourner à l\'application'
     })
 
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAdminUser])
+def import_questions_evaluation(request):
+    """
+    Import des questions d'évaluation ENA depuis un fichier Excel.
+    Colonnes requises: texte, type_question, matiere_nom
+    Colonnes optionnelles: choix_a, choix_b, choix_c, choix_d, bonne_reponse, explication, difficulte
+    """
+    import pandas as pd
+    import tempfile
+    import os
+    
+    if 'file' not in request.FILES:
+        return Response({
+            'success': False,
+            'error': 'Aucun fichier fourni'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    uploaded_file = request.FILES['file']
+    
+    # Sauvegarder temporairement le fichier
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+        for chunk in uploaded_file.chunks():
+            tmp_file.write(chunk)
+        tmp_file_path = tmp_file.name
+    
+    try:
+        # Lire le fichier Excel
+        df = pd.read_excel(tmp_file_path, engine='openpyxl')
+        
+        questions_importees = 0
+        questions_echouees = 0
+        erreurs = []
+        
+        for index, row in df.iterrows():
+            try:
+                # Récupérer les données
+                texte = str(row.get('texte', '')).strip()
+                type_question = str(row.get('type_question', 'choix_unique')).strip()
+                matiere_nom = str(row.get('matiere_nom', '')).strip()
+                difficulte = str(row.get('difficulte', 'moyen')).strip()
+                explication = str(row.get('explication', '')).strip() if pd.notna(row.get('explication')) else ''
+                
+                if not texte or not matiere_nom:
+                    erreurs.append(f"Ligne {index + 2}: texte ou matiere_nom manquant")
+                    questions_echouees += 1
+                    continue
+                
+                # Trouver la matière
+                try:
+                    matiere = Matiere.objects.get(nom__iexact=matiere_nom)
+                except Matiere.DoesNotExist:
+                    erreurs.append(f"Ligne {index + 2}: Matière '{matiere_nom}' non trouvée")
+                    questions_echouees += 1
+                    continue
+                
+                # Créer la question
+                question = Question.objects.create(
+                    texte=texte,
+                    type_question=type_question,
+                    matiere=matiere,
+                    niveau=difficulte,
+                    explication=explication
+                )
+                
+                # Créer les choix si c'est une question à choix
+                if type_question in ['choix_unique', 'choix_multiple']:
+                    bonne_reponse = str(row.get('bonne_reponse', '')).upper().strip() if pd.notna(row.get('bonne_reponse')) else ''
+                    
+                    for lettre in ['a', 'b', 'c', 'd', 'e']:
+                        choix_texte = row.get(f'choix_{lettre}')
+                        if pd.notna(choix_texte) and str(choix_texte).strip():
+                            est_correct = (lettre.upper() == bonne_reponse)
+                            Choix.objects.create(
+                                question=question,
+                                texte=str(choix_texte).strip(),
+                                est_correct=est_correct
+                            )
+                
+                questions_importees += 1
+                
+            except Exception as e:
+                erreurs.append(f"Ligne {index + 2}: {str(e)}")
+                questions_echouees += 1
+        
+        # Créer l'enregistrement d'import
+        ImportExcel.objects.create(
+            utilisateur=request.user,
+            fichier_nom=uploaded_file.name,
+            import_type='questions_evaluation_ena',
+            nombre_questions_importees=questions_importees
+        )
+        
+        return Response({
+            'success': True,
+            'rapport': {
+                'questions_importees': questions_importees,
+                'questions_echouees': questions_echouees,
+                'erreurs': erreurs[:20]  # Limiter à 20 erreurs
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f'Erreur import questions évaluation: {e}')
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    finally:
+        # Nettoyer le fichier temporaire
+        try:
+            os.unlink(tmp_file_path)
+        except:
+            pass
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAdminUser])
+def template_excel_evaluation(request):
+    """
+    Génère et retourne un template Excel pour l'import des questions d'évaluation ENA
+    """
+    import pandas as pd
+    from django.http import HttpResponse
+    from io import BytesIO
+    
+    # Créer les données d'exemple
+    data = {
+        'texte': [
+            'Quelle est la capitale du Sénégal ?',
+            'Quel est le résultat de 2 + 2 ?',
+            'Qui est le premier président du Sénégal ?'
+        ],
+        'type_question': ['choix_unique', 'choix_unique', 'choix_unique'],
+        'matiere_nom': ['Culture générale', 'Mathématiques', 'Histoire'],
+        'choix_a': ['Dakar', '3', 'Léopold Sédar Senghor'],
+        'choix_b': ['Abidjan', '4', 'Abdou Diouf'],
+        'choix_c': ['Bamako', '5', 'Abdoulaye Wade'],
+        'choix_d': ['Lomé', '6', 'Macky Sall'],
+        'bonne_reponse': ['A', 'B', 'A'],
+        'explication': [
+            'Dakar est la capitale du Sénégal depuis l\'indépendance en 1960.',
+            '2 + 2 = 4',
+            'Léopold Sédar Senghor a été le premier président du Sénégal de 1960 à 1980.'
+        ],
+        'difficulte': ['facile', 'facile', 'moyen']
+    }
+    
+    df = pd.DataFrame(data)
+    
+    # Créer le fichier Excel en mémoire
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Questions Évaluation')
+    output.seek(0)
+    
+    # Retourner le fichier
+    response = HttpResponse(
+        output.read(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="template_questions_evaluation_ena.xlsx"'
+    
+    return response
+
