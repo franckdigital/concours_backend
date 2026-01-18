@@ -390,8 +390,11 @@ class SessionQuizViewSet(viewsets.ModelViewSet):
         print(f'[SUBMIT_ANSWER] User: {request.user}')
         try:
             session = self.get_object()
-            if session.statut != 'en_cours':
-                return Response({'detail': 'Session déjà terminée ou réinitialisée.'}, status=400)
+            # 🚀 CORRECTION: Permettre la soumission même si session terminée (évite erreur 400 en fin de quiz)
+            # Cela évite les conditions de course quand la dernière réponse est soumise
+            session_terminee = session.statut != 'en_cours'
+            if session_terminee:
+                print(f'[SUBMIT_ANSWER] ⚠️ Session {session.id} déjà terminée (statut={session.statut}), mais on accepte la réponse')
             
             question_id = request.data.get('question_id')
             reponse_choisie = request.data.get('reponse_choisie')  # Lettre A, B, C, D pour choix
