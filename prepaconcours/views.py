@@ -893,6 +893,18 @@ class QuestionViewSet(viewsets.ModelViewSet):
         if self.action in ['list', 'retrieve']:
             return [AllowAny()]
         return [permissions.IsAuthenticated()]
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        type_source = self.request.query_params.get('type_source')
+        matiere_id = self.request.query_params.get('matiere_id')
+        
+        if type_source:
+            queryset = queryset.filter(type_source=type_source)
+        if matiere_id:
+            queryset = queryset.filter(matiere_id=matiere_id)
+            
+        return queryset
 
     def get_serializer_class(self):
         if self.action == 'retrieve' or self.action == 'detail':
@@ -4992,28 +5004,31 @@ def import_questions_evaluation(request):
                     try:
                         lecon = Lecon.objects.get(nom__iexact=lecon_nom, matiere=matiere)
                     except Lecon.DoesNotExist:
-                        # Créer la leçon si elle n'existe pas
+                        # Créer la leçon si elle n'existe pas (type évaluation)
                         lecon = Lecon.objects.create(
                             nom=lecon_nom,
                             matiere=matiere,
-                            ordre=Lecon.objects.filter(matiere=matiere).count() + 1
+                            type_lecon='evaluation',
+                            ordre=Lecon.objects.filter(matiere=matiere, type_lecon='evaluation').count() + 1
                         )
                         logger.info(f"Leçon '{lecon_nom}' créée pour la matière '{matiere_nom}'")
                 else:
-                    # Utiliser la première leçon de la matière ou en créer une par défaut
-                    lecon = Lecon.objects.filter(matiere=matiere).first()
+                    # Utiliser la première leçon évaluation de la matière ou en créer une par défaut
+                    lecon = Lecon.objects.filter(matiere=matiere, type_lecon='evaluation').first()
                     if not lecon:
                         lecon = Lecon.objects.create(
                             nom=f"Questions {matiere_nom}",
                             matiere=matiere,
+                            type_lecon='evaluation',
                             ordre=1
                         )
                         logger.info(f"Leçon par défaut créée pour la matière '{matiere_nom}'")
                 
-                # Préparer les données de la question
+                # Préparer les données de la question (type évaluation)
                 question_data = {
                     'texte': texte,
                     'type_question': type_question,
+                    'type_source': 'evaluation',
                     'matiere': matiere,
                     'lecon': lecon,
                     'explication': explication,

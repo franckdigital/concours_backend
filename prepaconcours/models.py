@@ -256,6 +256,12 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
 
 # --- Question ---
 
+# Types de source pour distinguer quiz et évaluation
+TYPE_SOURCE_CHOICES = [
+    ('quiz', 'Quiz ENA'),
+    ('evaluation', 'Évaluation ENA'),
+]
+
 class Question(models.Model):
     # Suppression de NIVEAU_CHOICES - remplacé par les leçons
     TYPE_CHOICES = [
@@ -276,6 +282,8 @@ class Question(models.Model):
     # Remplacement du champ niveau par une relation avec Lecon
     lecon = models.ForeignKey(Lecon, on_delete=models.CASCADE, related_name='questions', null=True, blank=True, help_text="Leçon à laquelle appartient cette question")
     type_question = models.CharField(max_length=20, choices=TYPE_CHOICES, default='choix_unique')
+    # Nouveau champ pour distinguer quiz vs évaluation
+    type_source = models.CharField(max_length=20, choices=TYPE_SOURCE_CHOICES, default='quiz', help_text="Type de source: quiz ou évaluation")
     explication = models.TextField(null=True, blank=True)
     reponse_attendue = models.TextField(null=True, blank=True, help_text="Pour les questions texte : réponse attendue, mot-clé ou regex")
     correction_mode = models.CharField(max_length=10, choices=CORRECTION_MODE_CHOICES, default='exacte', null=True, blank=True, help_text="Mode de correction automatique pour les questions texte")
