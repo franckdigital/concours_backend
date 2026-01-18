@@ -168,6 +168,11 @@ def user_stats(request):
             for tentative in tentatives_terminees
         )
         
+        # Si le temps total est 0 mais qu'il y a des quiz terminés, estimer le temps
+        # (environ 10 minutes par quiz en moyenne)
+        if total_time == 0 and completed_quizzes > 0:
+            total_time = completed_quizzes * 10 * 60  # 10 minutes en secondes par quiz
+        
         # Matière favorite (la plus jouée)
         matieres_count = {}
         for session in sessions_quiz:
