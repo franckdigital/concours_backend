@@ -4881,8 +4881,14 @@ def cinetpay_retour(request):
 def import_questions_evaluation(request):
     """
     Import des questions d'évaluation ENA depuis un fichier Excel.
-    Colonnes requises: texte, type_question, matiere_nom, lecon_nom
-    Colonnes optionnelles: choix_a, choix_b, choix_c, choix_d, bonne_reponse, explication, difficulte
+    
+    Colonnes requises: texte, type_question, matiere_nom
+    Colonnes recommandées: lecon_nom
+    Colonnes optionnelles: 
+        - Pour choix_unique/choix_multiple: choix_a, choix_b, choix_c, choix_d, choix_e, bonne_reponse
+        - Pour vrai_faux: bonne_reponse (VRAI ou FAUX)
+        - Pour texte_court/texte_long: reponse_attendue, correction_mode
+        - Général: explication, temps_limite
     
     IMPORTANT: Les questions doivent être liées à une leçon pour être utilisées dans les évaluations ENA.
     """
@@ -4914,18 +4920,40 @@ def import_questions_evaluation(request):
         
         for index, row in df.iterrows():
             try:
-                # Récupérer les données
+                # Récupérer les données de base
                 texte = str(row.get('texte', '')).strip()
-                type_question = str(row.get('type_question', 'choix_unique')).strip()
+                type_question = str(row.get('type_question', 'choix_unique')).strip().lower()
                 matiere_nom = str(row.get('matiere_nom', '')).strip()
                 lecon_nom = str(row.get('lecon_nom', '')).strip() if pd.notna(row.get('lecon_nom')) else ''
-                difficulte = str(row.get('difficulte', 'moyen')).strip()
                 explication = str(row.get('explication', '')).strip() if pd.notna(row.get('explication')) else ''
                 
+                # Champs optionnels avancés
+                reponse_attendue = str(row.get('reponse_attendue', '')).strip() if pd.notna(row.get('reponse_attendue')) else ''
+                correction_mode = str(row.get('correction_mode', 'exacte')).strip().lower() if pd.notna(row.get('correction_mode')) else 'exacte'
+                temps_limite = None
+                if pd.notna(row.get('temps_limite')):
+                    try:
+                        temps_limite = int(row.get('temps_limite'))
+                    except (ValueError, TypeError):
+                        pass
+                
+                # Validation des champs obligatoires
                 if not texte or not matiere_nom:
                     erreurs.append(f"Ligne {index + 2}: texte ou matiere_nom manquant")
                     questions_echouees += 1
                     continue
+                
+                # Valider le type de question
+                types_valides = ['choix_unique', 'choix_multiple', 'vrai_faux', 'texte_court', 'texte_long']
+                if type_question not in types_valides:
+                    erreurs.append(f"Ligne {index + 2}: type_question '{type_question}' invalide. Valeurs acceptées: {', '.join(types_valides)}")
+                    questions_echouees += 1
+                    continue
+                
+                # Valider correction_mode
+                modes_valides = ['exacte', 'mot_cle', 'regex']
+                if correction_mode not in modes_valides:
+                    correction_mode = 'exacte'
                 
                 # Trouver la matière ENA
                 try:
@@ -4964,29 +4992,56 @@ def import_questions_evaluation(request):
                         )
                         logger.info(f"Leçon par défaut créée pour la matière '{matiere_nom}'")
                 
-                # Créer la question avec la leçon (IMPORTANT pour les évaluations)
-                question = Question.objects.create(
-                    texte=texte,
-                    type_question=type_question,
-                    matiere=matiere,
-                    lecon=lecon,  # IMPORTANT: La leçon est requise pour les évaluations
-                    explication=explication,
-                    choix_concours='ENA'
-                )
+                # Préparer les données de la question
+                question_data = {
+                    'texte': texte,
+                    'type_question': type_question,
+                    'matiere': matiere,
+                    'lecon': lecon,
+                    'explication': explication,
+                    'choix_concours': 'ENA'
+                }
                 
-                # Créer les choix si c'est une question à choix
+                # Ajouter les champs optionnels si présents
+                if reponse_attendue and type_question in ['texte_court', 'texte_long']:
+                    question_data['reponse_attendue'] = reponse_attendue
+                    question_data['correction_mode'] = correction_mode
+                
+                if temps_limite:
+                    question_data['temps_limite'] = temps_limite
+                
+                # Créer la question
+                question = Question.objects.create(**question_data)
+                
+                # Créer les choix selon le type de question
+                bonne_reponse = str(row.get('bonne_reponse', '')).upper().strip() if pd.notna(row.get('bonne_reponse')) else ''
+                
                 if type_question in ['choix_unique', 'choix_multiple']:
-                    bonne_reponse = str(row.get('bonne_reponse', '')).upper().strip() if pd.notna(row.get('bonne_reponse')) else ''
+                    # Gérer les choix multiples (A,B ou A;B)
+                    bonnes_reponses = [r.strip() for r in bonne_reponse.replace(';', ',').split(',') if r.strip()]
                     
                     for lettre in ['a', 'b', 'c', 'd', 'e']:
                         choix_texte = row.get(f'choix_{lettre}')
                         if pd.notna(choix_texte) and str(choix_texte).strip():
-                            est_correct = (lettre.upper() == bonne_reponse)
+                            est_correct = lettre.upper() in bonnes_reponses
                             Choix.objects.create(
                                 question=question,
                                 texte=str(choix_texte).strip(),
                                 est_correct=est_correct
                             )
+                
+                elif type_question == 'vrai_faux':
+                    # Créer les choix Vrai/Faux
+                    Choix.objects.create(
+                        question=question,
+                        texte='Vrai',
+                        est_correct=(bonne_reponse == 'VRAI')
+                    )
+                    Choix.objects.create(
+                        question=question,
+                        texte='Faux',
+                        est_correct=(bonne_reponse == 'FAUX')
+                    )
                 
                 questions_importees += 1
                 
@@ -5030,59 +5085,133 @@ def import_questions_evaluation(request):
 def template_excel_evaluation(request):
     """
     Génère et retourne un template Excel pour l'import des questions d'évaluation ENA
-    Les matières ENA valides sont : Culture Générale, Aptitude verbale, Logique numérique, etc.
+    Inclut des exemples pour tous les types de questions supportés.
     """
     import pandas as pd
     from django.http import HttpResponse
     from io import BytesIO
     
-    # Récupérer les matières ENA disponibles pour les afficher dans le template
+    # Récupérer les matières ENA disponibles
     matieres_ena = list(Matiere.objects.filter(choix_concours='ENA').values_list('nom', flat=True).distinct())
-    matieres_info = ', '.join(matieres_ena[:10]) if matieres_ena else 'Culture Générale, Aptitude verbale, Logique numérique'
     
-    # Créer les données d'exemple avec les vraies matières ENA
+    # Créer les données d'exemple avec TOUS les types de questions
     data = {
         'texte': [
+            # Choix unique
             'Quelle est la capitale du Sénégal ?',
-            'Quel mot est le synonyme de "perspicace" ?',
-            'Dans la suite 2, 4, 8, 16, quel est le nombre suivant ?',
-            'Qui est le premier président du Sénégal ?',
-            'Quel est le résultat de 15 x 8 ?'
+            # Choix multiple
+            'Quels pays sont membres de la CEDEAO ? (plusieurs réponses possibles)',
+            # Vrai/Faux
+            'Le Sénégal a obtenu son indépendance en 1960.',
+            # Texte court
+            'Quel est le passé simple du verbe "aller" à la 3ème personne du singulier ?',
+            # Texte long
+            'Expliquez brièvement le concept de séparation des pouvoirs.',
+            # Autre exemple choix unique
+            'Dans la suite 2, 4, 8, 16, quel est le nombre suivant ?'
         ],
-        'type_question': ['choix_unique', 'choix_unique', 'choix_unique', 'choix_unique', 'choix_unique'],
-        'matiere_nom': ['Culture Générale', 'Aptitude verbale', 'Logique numérique', 'Culture Générale', 'Logique numérique'],
-        'lecon_nom': ['Géographie', 'Vocabulaire', 'Suites numériques', 'Histoire politique', 'Calcul mental'],
-        'choix_a': ['Dakar', 'Clairvoyant', '24', 'Léopold Sédar Senghor', '100'],
-        'choix_b': ['Abidjan', 'Naïf', '32', 'Abdou Diouf', '120'],
-        'choix_c': ['Bamako', 'Confus', '20', 'Abdoulaye Wade', '115'],
-        'choix_d': ['Lomé', 'Lent', '48', 'Macky Sall', '125'],
-        'bonne_reponse': ['A', 'A', 'B', 'A', 'B'],
+        'type_question': [
+            'choix_unique',
+            'choix_multiple',
+            'vrai_faux',
+            'texte_court',
+            'texte_long',
+            'choix_unique'
+        ],
+        'matiere_nom': [
+            'Culture Générale',
+            'Culture Générale',
+            'Culture Générale',
+            'Aptitude verbale',
+            'Culture Générale',
+            'Logique numérique'
+        ],
+        'lecon_nom': [
+            'Géographie',
+            'Organisations internationales',
+            'Histoire',
+            'Conjugaison',
+            'Droit constitutionnel',
+            'Suites numériques'
+        ],
+        'choix_a': ['Dakar', 'Sénégal', '', '', '', '24'],
+        'choix_b': ['Abidjan', 'Nigeria', '', '', '', '32'],
+        'choix_c': ['Bamako', 'Maroc', '', '', '', '20'],
+        'choix_d': ['Lomé', 'Ghana', '', '', '', '48'],
+        'choix_e': ['', 'Côte d\'Ivoire', '', '', '', ''],
+        'bonne_reponse': [
+            'A',           # Choix unique: une seule lettre
+            'A,B,D,E',     # Choix multiple: lettres séparées par virgules
+            'VRAI',        # Vrai/Faux: VRAI ou FAUX
+            '',            # Texte court: pas de choix
+            '',            # Texte long: pas de choix
+            'B'            # Choix unique
+        ],
+        'reponse_attendue': [
+            '',
+            '',
+            '',
+            'alla',        # Pour texte_court: la réponse attendue
+            'séparation des pouvoirs, législatif, exécutif, judiciaire',  # Pour texte_long: mots-clés
+            ''
+        ],
+        'correction_mode': [
+            '',
+            '',
+            '',
+            'exacte',      # exacte, mot_cle, ou regex
+            'mot_cle',
+            ''
+        ],
         'explication': [
             'Dakar est la capitale du Sénégal depuis l\'indépendance en 1960.',
-            'Perspicace signifie qui a une vue pénétrante, qui comprend vite, synonyme de clairvoyant.',
-            'La suite double à chaque fois : 2, 4, 8, 16, 32.',
-            'Léopold Sédar Senghor a été le premier président du Sénégal de 1960 à 1980.',
-            '15 x 8 = 120'
+            'Le Sénégal, le Nigeria, le Ghana et la Côte d\'Ivoire sont membres de la CEDEAO. Le Maroc n\'en fait pas partie.',
+            'Le Sénégal a obtenu son indépendance le 4 avril 1960.',
+            'Le passé simple de "aller" à la 3ème personne du singulier est "alla".',
+            'La séparation des pouvoirs distingue le pouvoir législatif, exécutif et judiciaire.',
+            'La suite double à chaque fois : 2, 4, 8, 16, 32.'
         ],
-        'difficulte': ['facile', 'moyen', 'moyen', 'facile', 'facile']
+        'temps_limite': [60, 90, 30, 60, 180, 60]  # En secondes
     }
     
     df = pd.DataFrame(data)
     
-    # Créer le fichier Excel en mémoire avec 2 feuilles
+    # Créer le fichier Excel avec plusieurs feuilles
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Feuille principale avec les exemples
         df.to_excel(writer, index=False, sheet_name='Questions Évaluation')
         
-        # Ajouter une feuille avec les matières disponibles
+        # Feuille avec les matières disponibles
         if matieres_ena:
-            matieres_df = pd.DataFrame({
-                'Matières ENA disponibles': matieres_ena
-            })
+            matieres_df = pd.DataFrame({'Matières ENA disponibles': matieres_ena})
             matieres_df.to_excel(writer, index=False, sheet_name='Matières disponibles')
+        
+        # Feuille d'aide avec les instructions
+        aide_data = {
+            'Colonne': [
+                'texte', 'type_question', 'matiere_nom', 'lecon_nom',
+                'choix_a à choix_e', 'bonne_reponse', 'reponse_attendue',
+                'correction_mode', 'explication', 'temps_limite'
+            ],
+            'Description': [
+                'Texte de la question (OBLIGATOIRE)',
+                'choix_unique, choix_multiple, vrai_faux, texte_court, texte_long (OBLIGATOIRE)',
+                'Nom exact de la matière ENA (OBLIGATOIRE)',
+                'Nom de la leçon/thème (Recommandé - sera créée si inexistante)',
+                'Propositions de réponse (pour choix_unique/multiple uniquement)',
+                'A, B, C, D, E ou A,B,C pour multiple | VRAI ou FAUX pour vrai_faux',
+                'Réponse attendue ou mots-clés (pour texte_court/long uniquement)',
+                'exacte, mot_cle, ou regex (pour texte_court/long)',
+                'Explication de la réponse correcte',
+                'Durée en secondes (défaut: 60)'
+            ]
+        }
+        aide_df = pd.DataFrame(aide_data)
+        aide_df.to_excel(writer, index=False, sheet_name='Instructions')
+    
     output.seek(0)
     
-    # Retourner le fichier
     response = HttpResponse(
         output.read(),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
