@@ -4498,13 +4498,20 @@ class AbonnementViewSet(viewsets.ModelViewSet):
         if abonnement and abonnement.plan.questions_par_jour > 0:
             questions_restantes = max(0, abonnement.plan.questions_par_jour - quota.questions_utilisees)
         
+        # Vérifier si l'utilisateur a déjà utilisé le plan test gratuit
+        a_deja_utilise_plan_test = Abonnement.objects.filter(
+            utilisateur=request.user,
+            plan__code='test'
+        ).exists()
+        
         data = {
             'a_abonnement_actif': abonnement is not None,
             'abonnement': AbonnementSerializer(abonnement).data if abonnement else None,
             'peut_poser_question': peut_poser,
             'message_quota': message,
             'questions_utilisees_aujourdhui': quota.questions_utilisees,
-            'questions_restantes_aujourdhui': questions_restantes
+            'questions_restantes_aujourdhui': questions_restantes,
+            'a_deja_utilise_plan_test': a_deja_utilise_plan_test
         }
         
         return Response(data)
