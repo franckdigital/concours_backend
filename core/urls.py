@@ -18,11 +18,24 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
+
+def api_root(request):
+    """Vue racine de l'API"""
+    return JsonResponse({
+        'status': 'ok',
+        'message': 'API Prepa Concours - Bienvenue',
+        'version': '1.0',
+        'endpoints': {
+            'admin': '/admin/',
+            'api': '/api/',
+        }
+    })
 
 urlpatterns = [
+    path('', api_root, name='api-root'),
     path('admin/', admin.site.urls),
     path('api/', include('prepaconcours.urls')),
-    # path('core/', include('prepaconcours.urls')),  # Ancienne route, inutile pour l'API
 ]
 
 # Servir les fichiers media en développement

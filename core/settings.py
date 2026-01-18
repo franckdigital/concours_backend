@@ -10,10 +10,15 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement depuis .env
+load_dotenv()
+
 import pymysql
 pymysql.install_as_MySQLdb()
-
-from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -48,8 +53,21 @@ EMAIL_HOST_PASSWORD = 'votre_mot_de_passe_app'
 DEFAULT_FROM_EMAIL = 'votre_email@gmail.com'
 
 # Configuration OpenAI
-import os
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+
+# Configuration CinetPay
+CINETPAY_API_KEY = os.environ.get('CINETPAY_API_KEY', '12912847765bc0db748fdd44.40081707')
+CINETPAY_SITE_ID = os.environ.get('CINETPAY_SITE_ID', '445160')
+CINETPAY_SECRET_KEY = os.environ.get('CINETPAY_SECRET_KEY', '1905618043656f094465a831.25769262')
+
+# URL de base de l'application (à configurer selon l'environnement)
+APP_BASE_URL = os.environ.get('APP_BASE_URL', 'http://localhost:8000')
+
+# URLs de callback CinetPay
+CINETPAY_RETURN_URL = f'{APP_BASE_URL}/api/payments/cinetpay/return'
+CINETPAY_NOTIFY_URL = f'{APP_BASE_URL}/api/payments/cinetpay/notify'
+CINETPAY_CANCEL_URL = f'{APP_BASE_URL}/api/payments/cinetpay/cancel'
+
 # Configuration CORS - Mode permissif pour debug
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
