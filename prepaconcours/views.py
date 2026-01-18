@@ -127,16 +127,26 @@ def user_profile(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def user_stats(request):
-    """Endpoint pour récupérer les statistiques dynamiques de l'utilisateur"""
+    """Endpoint pour récupérer les statistiques dynamiques de l'utilisateur
+    
+    Paramètres GET optionnels:
+    - concours: 'ENA' ou 'fonction_publique' pour filtrer par type de concours
+    """
     user = request.user
+    concours_filter = request.GET.get('concours', None)  # 'ENA', 'fonction_publique' ou None (tous)
     
     try:
-        # Récupérer toutes les tentatives de l'utilisateur
-        tentatives = Tentative.objects.filter(utilisateur=user)
-        tentatives_terminees = tentatives.filter(terminee=True)
-        
-        # Sessions quiz ENA
+        # Récupérer les sessions quiz de l'utilisateur (avec filtrage optionnel)
         sessions_quiz = SessionQuiz.objects.filter(utilisateur=user)
+        if concours_filter:
+            sessions_quiz = sessions_quiz.filter(choix_concours=concours_filter)
+        
+        # Récupérer les tentatives liées à ces sessions
+        tentatives = Tentative.objects.filter(
+            utilisateur=user,
+            session__in=sessions_quiz
+        )
+        tentatives_terminees = tentatives.filter(terminee=True)
         
         # Calculs des statistiques
         total_quizzes = sessions_quiz.count()
@@ -145,7 +155,8 @@ def user_stats(request):
         ).distinct().count()
         
         # Score moyen des tentatives terminées
-        scores = tentatives_terminees.values_list('score', flat=True)
+        scores = list(tentatives_terminees.values_list('score', flat=True))
+        scores = [s for s in scores if s is not None]  # Filtrer les None
         average_score = sum(scores) / len(scores) if scores else 0
         
         # Meilleur score
@@ -178,16 +189,17 @@ def user_stats(request):
             else:
                 break
         
-        # Activité récente (5 dernières tentatives)
-        recent_tentatives = tentatives_terminees.order_by('-date_test')[:5]
+        # Activité récente (20 dernières tentatives pour avoir un historique plus complet)
+        recent_tentatives = tentatives_terminees.order_by('-date_test')[:20]
         recent_activity = []
         
         for tentative in recent_tentatives:
-            session = tentative.session  # Utiliser la relation directe
+            session = tentative.session
             recent_activity.append({
                 'date': tentative.date_test.strftime('%Y-%m-%d'),
                 'score': tentative.score or 0,
-                'subject': session.matiere.nom if session and session.matiere else 'Quiz général'
+                'subject': session.matiere.nom if session and session.matiere else 'Quiz général',
+                'concours': session.choix_concours if session else 'ENA'
             })
         
         stats = {
@@ -198,7 +210,8 @@ def user_stats(request):
             'favoriteSubject': favorite_subject,
             'bestScore': round(best_score, 1),
             'streak': streak,
-            'recentActivity': recent_activity
+            'recentActivity': recent_activity,
+            'concoursFilter': concours_filter or 'all'
         }
         
         return Response(stats)
