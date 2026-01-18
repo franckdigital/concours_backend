@@ -4339,22 +4339,23 @@ def import_questions_excel(request):
                     questions_echouees += 1
                     continue
                 
-                # Trouver ou créer la leçon
-                lecon = Lecon.objects.filter(nom__iexact=lecon_nom, matiere=matiere).first()
+                # Trouver ou créer la leçon (type quiz)
+                lecon = Lecon.objects.filter(nom__iexact=lecon_nom, matiere=matiere, type_lecon='quiz').first()
                 if not lecon:
-                    # Créer la leçon si elle n'existe pas
-                    lecon = Lecon.objects.create(nom=lecon_nom, matiere=matiere)
-                    logger.info(f"Leçon créée: {lecon_nom} pour matière {matiere_nom}")
+                    # Créer la leçon si elle n'existe pas (type quiz)
+                    lecon = Lecon.objects.create(nom=lecon_nom, matiere=matiere, type_lecon='quiz')
+                    logger.info(f"Leçon quiz créée: {lecon_nom} pour matière {matiere_nom}")
                 
                 # Récupérer l'image base64 si présente
                 image_base64 = None
                 if pd.notna(row.get('image_base64')) and str(row.get('image_base64', '')).strip():
                     image_base64 = str(row['image_base64']).strip()
                 
-                # Créer la question
+                # Créer la question (type quiz)
                 question = Question.objects.create(
                     texte=str(row['texte']).strip(),
                     type_question=row['type_question'],
+                    type_source='quiz',
                     matiere=matiere,
                     lecon=lecon,
                     image_base64=image_base64,
