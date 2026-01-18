@@ -132,7 +132,7 @@ class QuestionExamenPublicSerializer(serializers.ModelSerializer):
             'id', 'code_question', 'texte', 'type_question', 'type_question_display',
             'matiere_combinee', 'matiere_combinee_display', 'choix_a', 'choix_b', 
             'choix_c', 'choix_d', 'choix_e', 'choix', 'temps_limite_secondes',
-            'difficulte'
+            'difficulte', 'image_base64'
         ]
     
     def get_choix(self, obj):

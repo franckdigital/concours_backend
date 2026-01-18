@@ -369,6 +369,9 @@ class QuestionExamen(models.Model):
     validee = models.BooleanField(default=False, help_text="Question validée par un administrateur")
     nombre_utilisations = models.PositiveIntegerField(default=0, help_text="Nombre de fois utilisée dans des examens")
     
+    # Image optionnelle (pour questions de logique avec schémas/diagrammes)
+    image_base64 = models.TextField(null=True, blank=True, help_text="Image de la question en base64 (pour schémas, diagrammes)")
+    
     # Métadonnées
     date_creation = models.DateTimeField(default=timezone.now)
     date_modification = models.DateTimeField(auto_now=True)
