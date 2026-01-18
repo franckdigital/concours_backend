@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
     Cycle, Matiere, Utilisateur, Question, Choix,
     Tentative, ReponseTentative, Certificat, ImportExcel, Lecon,
-    ContenuPedagogique, SessionZoomLive
+    ContenuPedagogique, SessionZoomLive, ConfigurationComposition, QuestionExamen
 )
 
 from .utils import notify_ip_reset
@@ -244,4 +244,99 @@ class ImportExcelAdmin(admin.ModelAdmin):
     readonly_fields = ('date_import', 'date_fin', 'details', 'erreur')
     list_select_related = ('utilisateur',)
     date_hierarchy = 'date_import'
+
+
+# === Configuration des Compositions Nationales ===
+@admin.register(ConfigurationComposition)
+class ConfigurationCompositionAdmin(admin.ModelAdmin):
+    """Admin pour la configuration dynamique des pages de composition"""
+    list_display = ('matiere_combinee', 'nom_affichage', 'duree_minutes', 'nombre_questions', 'est_actif', 'date_modification')
+    list_filter = ('est_actif', 'matiere_combinee')
+    search_fields = ('nom_affichage', 'titre_principal')
+    readonly_fields = ('date_creation', 'date_modification')
+    
+    fieldsets = (
+        ('Matière', {
+            'fields': ('matiere_combinee', 'nom_affichage', 'est_actif'),
+            'description': 'Configuration de base de la matière'
+        }),
+        ('En-tête de la feuille', {
+            'fields': ('titre_principal', 'sous_titre_1', 'sous_titre_2'),
+            'description': 'Textes affichés dans l\'en-tête de la feuille de composition'
+        }),
+        ('Paramètres de l\'épreuve', {
+            'fields': ('duree_minutes', 'nombre_questions'),
+            'description': 'Durée et nombre de questions'
+        }),
+        ('Instructions et barème', {
+            'fields': ('instruction_principale', 'bareme_bonne_reponse', 'bareme_mauvaise_reponse', 'bareme_absence_reponse'),
+            'description': 'Instructions et système de notation'
+        }),
+        ('Apparence', {
+            'fields': ('couleur_primaire', 'couleur_secondaire'),
+            'description': 'Couleurs du dégradé de la page'
+        }),
+        ('Messages et boutons', {
+            'fields': ('message_intro', 'bouton_commencer', 'bouton_terminer'),
+            'description': 'Textes des messages et boutons'
+        }),
+        ('Pied de page', {
+            'fields': ('pied_de_page',),
+            'classes': ('collapse',),
+        }),
+        ('Métadonnées', {
+            'fields': ('date_creation', 'date_modification'),
+            'classes': ('collapse',),
+        }),
+    )
+    
+    def get_readonly_fields(self, request, obj=None):
+        """Empêche la modification de matiere_combinee après création"""
+        if obj:
+            return self.readonly_fields + ('matiere_combinee',)
+        return self.readonly_fields
+
+
+# === Questions d'Examen National ===
+@admin.register(QuestionExamen)
+class QuestionExamenAdmin(admin.ModelAdmin):
+    """Admin pour les questions de l'examen national (composition)"""
+    list_display = ('id', 'get_texte_court', 'matiere_combinee', 'type_question', 'bonne_reponse', 'active', 'date_creation')
+    list_filter = ('matiere_combinee', 'type_question', 'active')
+    search_fields = ('texte', 'choix_a', 'choix_b', 'choix_c', 'choix_d', 'explication')
+    list_editable = ('active',)
+    ordering = ('-date_creation', 'matiere_combinee')
+    date_hierarchy = 'date_creation'
+    list_per_page = 50
+    
+    fieldsets = (
+        ('Question', {
+            'fields': ('texte', 'matiere_combinee', 'type_question', 'active'),
+        }),
+        ('Choix de réponses', {
+            'fields': ('choix_a', 'choix_b', 'choix_c', 'choix_d'),
+            'description': 'Les 4 choix possibles (A, B, C, D)'
+        }),
+        ('Réponse correcte', {
+            'fields': ('bonne_reponse', 'explication'),
+            'description': 'Indiquez la lettre de la bonne réponse (A, B, C ou D)'
+        }),
+    )
+    
+    def get_texte_court(self, obj):
+        """Affiche un extrait du texte de la question"""
+        return obj.texte[:80] + '...' if len(obj.texte) > 80 else obj.texte
+    get_texte_court.short_description = 'Question'
+    
+    actions = ['activer_questions', 'desactiver_questions']
+    
+    @admin.action(description="Activer les questions sélectionnées")
+    def activer_questions(self, request, queryset):
+        count = queryset.update(active=True)
+        self.message_user(request, f"{count} question(s) activée(s).")
+    
+    @admin.action(description="Désactiver les questions sélectionnées")
+    def desactiver_questions(self, request, queryset):
+        count = queryset.update(active=False)
+        self.message_user(request, f"{count} question(s) désactivée(s).")
 

@@ -15,7 +15,7 @@ from .views import (
     # ViewSets pour les questions d'examen national
     QuestionExamenViewSet,
     # ViewSets pour les compositions nationales
-    SessionCompositionViewSet,
+    SessionCompositionViewSet, ConfigurationCompositionViewSet,
     # Endpoints spécialisés pour l'import ENA
     import_questions_ena_excel, template_excel_ena,
     # Endpoints pour l'import des questions régulières
@@ -70,6 +70,7 @@ router.register(r'questions-examen', QuestionExamenViewSet, basename='questions_
 
 # Routes pour les compositions nationales
 router.register(r'sessions_composition', SessionCompositionViewSet, basename='sessions_composition')
+router.register(r'configurations-composition', ConfigurationCompositionViewSet, basename='configurations_composition')
 
 # Routes pour les abonnements et paiements
 router.register(r'plans', PlanViewSet, basename='plans')

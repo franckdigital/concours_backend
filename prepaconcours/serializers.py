@@ -581,6 +581,27 @@ class ReponseCompositionSerializer(serializers.ModelSerializer):
         read_only_fields = ('date_reponse', 'est_correcte')
 
 
+class ConfigurationCompositionSerializer(serializers.ModelSerializer):
+    """Serializer pour les configurations des 3 feuilles de composition"""
+    matiere_combinee_display = serializers.CharField(source='get_matiere_combinee_display', read_only=True)
+    
+    class Meta:
+        from .models import ConfigurationComposition
+        model = ConfigurationComposition
+        fields = [
+            'id', 'matiere_combinee', 'matiere_combinee_display',
+            'titre_principal', 'sous_titre_1', 'sous_titre_2',
+            'nom_affichage', 'duree_minutes', 'nombre_questions',
+            'instruction_principale',
+            'bareme_bonne_reponse', 'bareme_mauvaise_reponse', 'bareme_absence_reponse',
+            'couleur_primaire', 'couleur_secondaire',
+            'message_intro', 'bouton_commencer', 'bouton_terminer',
+            'pied_de_page', 'est_actif',
+            'date_creation', 'date_modification'
+        ]
+        read_only_fields = ('date_creation', 'date_modification')
+
+
 # === Serializers pour les abonnements ===
 
 class PlanSerializer(serializers.ModelSerializer):

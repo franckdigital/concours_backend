@@ -3912,29 +3912,132 @@ class SessionCompositionViewSet(viewsets.ModelViewSet):
         return SessionComposition.objects.filter(utilisateur=self.request.user)
     
     def perform_create(self, serializer):
-        # Définir les durées par matière
-        durees_matieres = {
-            'culture_aptitude': 90,  # 90 minutes
-            'anglais': 45,           # 45 minutes
-            'logique_combinee': 90   # 90 minutes
-        }
+        from .models import ConfigurationComposition
         
         matiere_combinee = serializer.validated_data.get('matiere_combinee')
-        duree_prevue = durees_matieres.get(matiere_combinee, 90)
         
-        # Ajouter duree_prevue aux validated_data si pas fourni
+        # Récupérer la configuration dynamique si disponible
+        try:
+            config = ConfigurationComposition.objects.get(matiere_combinee=matiere_combinee, est_actif=True)
+            duree_prevue = config.duree_minutes
+        except ConfigurationComposition.DoesNotExist:
+            # Fallback vers les valeurs par défaut
+            durees_matieres = {
+                'culture_aptitude': 90,
+                'anglais': 45,
+                'logique_combinee': 90
+            }
+            duree_prevue = durees_matieres.get(matiere_combinee, 90)
+        
         if 'duree_prevue' not in serializer.validated_data:
             serializer.validated_data['duree_prevue'] = duree_prevue
         
-        serializer.save(
-            utilisateur=self.request.user
-        )
+        serializer.save(utilisateur=self.request.user)
+    
+    @action(detail=False, methods=['get'], url_path='configuration/(?P<matiere_id>[^/.]+)')
+    def configuration(self, request, matiere_id=None):
+        """Récupérer la configuration dynamique d'une matière de composition"""
+        from .models import ConfigurationComposition
+        
+        try:
+            config = ConfigurationComposition.objects.get(matiere_combinee=matiere_id, est_actif=True)
+            
+            return Response({
+                'success': True,
+                'matiere_combinee': config.matiere_combinee,
+                'nom_affichage': config.nom_affichage,
+                'titre_principal': config.titre_principal,
+                'sous_titre_1': config.sous_titre_1,
+                'sous_titre_2': config.sous_titre_2,
+                'duree_minutes': config.duree_minutes,
+                'nombre_questions': config.nombre_questions,
+                'instruction_principale': config.instruction_principale,
+                'bareme': {
+                    'bonne_reponse': float(config.bareme_bonne_reponse),
+                    'mauvaise_reponse': float(config.bareme_mauvaise_reponse),
+                    'absence_reponse': float(config.bareme_absence_reponse)
+                },
+                'couleurs': [config.couleur_primaire, config.couleur_secondaire],
+                'message_intro': config.message_intro,
+                'bouton_commencer': config.bouton_commencer,
+                'bouton_terminer': config.bouton_terminer,
+                'pied_de_page': config.pied_de_page
+            })
+            
+        except ConfigurationComposition.DoesNotExist:
+            # Retourner la configuration par défaut
+            configs_defaut = {
+                'culture_aptitude': {
+                    'nom_affichage': 'Culture générale + Aptitude verbale',
+                    'duree_minutes': 90,
+                    'nombre_questions': 40,
+                    'couleurs': ['#667eea', '#764ba2']
+                },
+                'anglais': {
+                    'nom_affichage': 'Anglais',
+                    'duree_minutes': 45,
+                    'nombre_questions': 20,
+                    'couleurs': ['#74b9ff', '#0984e3']
+                },
+                'logique_combinee': {
+                    'nom_affichage': "Logique d'organisation + Logique numérique",
+                    'duree_minutes': 90,
+                    'nombre_questions': 40,
+                    'couleurs': ['#fdcb6e', '#e17055']
+                }
+            }
+            
+            config_defaut = configs_defaut.get(matiere_id, configs_defaut['culture_aptitude'])
+            
+            return Response({
+                'success': True,
+                'matiere_combinee': matiere_id,
+                'nom_affichage': config_defaut['nom_affichage'],
+                'titre_principal': 'FEUILLE DE COMPOSITION',
+                'sous_titre_1': "CONCOURS DIRECT D'ENTRÉE EN 2024",
+                'sous_titre_2': "AU CYCLE MOYEN DE L'ENA",
+                'duree_minutes': config_defaut['duree_minutes'],
+                'nombre_questions': config_defaut['nombre_questions'],
+                'instruction_principale': 'Choisissez la bonne réponse parmi les quatre propositions.',
+                'bareme': {
+                    'bonne_reponse': 0.5,
+                    'mauvaise_reponse': -0.25,
+                    'absence_reponse': 0
+                },
+                'couleurs': config_defaut['couleurs'],
+                'message_intro': 'Cliquez sur "Commencer" pour démarrer le timer et commencer la composition.',
+                'bouton_commencer': 'Commencer la composition',
+                'bouton_terminer': 'Terminer la composition',
+                'pied_de_page': ''
+            })
+    
+    @action(detail=False, methods=['get'], url_path='all-configurations')
+    def all_configurations(self, request):
+        """Récupérer toutes les configurations de composition"""
+        from .models import ConfigurationComposition
+        
+        configs = ConfigurationComposition.objects.filter(est_actif=True)
+        
+        result = []
+        for config in configs:
+            result.append({
+                'matiere_combinee': config.matiere_combinee,
+                'nom_affichage': config.nom_affichage,
+                'duree_minutes': config.duree_minutes,
+                'nombre_questions': config.nombre_questions,
+                'couleurs': [config.couleur_primaire, config.couleur_secondaire]
+            })
+        
+        return Response({'success': True, 'configurations': result})
     
     @action(detail=True, methods=['get'])
     def questions(self, request, pk=None):
-        """Récupérer les questions pour une session de composition"""
+        """Récupérer les questions pour une session de composition - OPTIMISÉ"""
         try:
-            session = SessionComposition.objects.get(id=pk, utilisateur=request.user)
+            # 🚀 OPTIMISATION: select_related pour éviter les requêtes N+1
+            session = SessionComposition.objects.select_related('utilisateur').get(
+                id=pk, utilisateur=request.user
+            )
             
             # Nombre de questions par matière
             nombres_questions = {
@@ -3953,18 +4056,20 @@ class SessionCompositionViewSet(viewsets.ModelViewSet):
             nombre_questions = nombres_questions.get(session.matiere_combinee, 40)
             nom_matiere = noms_matieres.get(session.matiere_combinee, session.matiere_combinee)
             
-            # Récupérer les questions aléatoirement
-            questions = QuestionExamen.objects.filter(
+            # 🚀 OPTIMISATION: Récupérer les questions avec only() pour réduire les données
+            questions = list(QuestionExamen.objects.filter(
                 matiere_combinee=session.matiere_combinee,
                 active=True
-            ).order_by('?')[:nombre_questions]
+            ).only(
+                'id', 'texte', 'type_question', 'bonne_reponse',
+                'choix_a', 'choix_b', 'choix_c', 'choix_d'
+            ).order_by('?')[:nombre_questions])
             
             # Si aucune question n'existe, générer des questions de démonstration
-            if not questions.exists():
+            if not questions:
                 logger.warning(f'Aucune question trouvée pour {session.matiere_combinee}, génération de questions de démonstration')
-                questions_data = []
-                for i in range(nombre_questions):
-                    questions_data.append({
+                questions_data = [
+                    {
                         'id': i + 1,
                         'texte_question': f'Question {i + 1} de {nom_matiere} (démonstration)',
                         'type_question': 'choix_unique',
@@ -3974,32 +4079,33 @@ class SessionCompositionViewSet(viewsets.ModelViewSet):
                             {'id': 'c', 'texte_choix': 'Option C', 'est_correcte': False},
                             {'id': 'd', 'texte_choix': 'Option D', 'est_correcte': False},
                         ]
-                    })
+                    }
+                    for i in range(nombre_questions)
+                ]
                 return Response(questions_data)
             
-            # Sérialiser les questions avec les choix
+            # 🚀 OPTIMISATION: Sérialisation en une seule passe avec list comprehension
             questions_data = []
+            choix_map = [('a', 'A'), ('b', 'B'), ('c', 'C'), ('d', 'D')]
+            
             for question in questions:
-                question_data = {
-                    'id': question.id,
-                    'texte_question': question.texte,
-                    'type_question': question.type_question,
-                    'choix': []
-                }
-                
-                # Ajouter les choix depuis les champs du modèle QuestionExamen
+                choix = []
                 if question.type_question in ['choix_unique', 'choix_multiple']:
-                    choix_map = {'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D'}
-                    for lettre, label in choix_map.items():
+                    for lettre, label in choix_map:
                         choix_texte = getattr(question, f'choix_{lettre}', '')
                         if choix_texte:
-                            question_data['choix'].append({
+                            choix.append({
                                 'id': lettre,
                                 'texte_choix': choix_texte,
                                 'est_correcte': question.bonne_reponse == label
                             })
                 
-                questions_data.append(question_data)
+                questions_data.append({
+                    'id': question.id,
+                    'texte_question': question.texte,
+                    'type_question': question.type_question,
+                    'choix': choix
+                })
             
             return Response(questions_data)
             
@@ -4014,6 +4120,121 @@ class SessionCompositionViewSet(viewsets.ModelViewSet):
                 {'error': 'Erreur lors de la récupération des questions'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+    
+    @action(detail=True, methods=['post'])
+    def submit_answer(self, request, pk=None):
+        """Soumettre une réponse pour une question de composition - OPTIMISÉ"""
+        try:
+            session = SessionComposition.objects.get(id=pk, utilisateur=request.user)
+            
+            question_id = request.data.get('question_id')
+            reponse_choisie = request.data.get('reponse_choisie', '')
+            temps_reponse = request.data.get('temps_reponse', 0)
+            
+            if not question_id:
+                return Response({'detail': 'question_id est requis.'}, status=400)
+            
+            # Vérifier la réponse
+            try:
+                question = QuestionExamen.objects.get(id=question_id)
+                est_correct = False
+                
+                if reponse_choisie and reponse_choisie.strip():
+                    # Comparer avec la bonne réponse (A, B, C, D)
+                    est_correct = question.bonne_reponse == reponse_choisie.upper()
+                
+                # Sauvegarder ou mettre à jour la réponse avec update_or_create (optimisé)
+                from .models import ReponseComposition
+                ReponseComposition.objects.update_or_create(
+                    session_composition=session,
+                    question_examen=question,
+                    defaults={
+                        'reponse_donnee': reponse_choisie,
+                        'est_correcte': est_correct,
+                        'temps_reponse': temps_reponse
+                    }
+                )
+                
+                return Response({
+                    'success': True,
+                    'est_correct': est_correct,
+                    'bonne_reponse': question.bonne_reponse,
+                    'explication': getattr(question, 'explication', None)
+                })
+                
+            except QuestionExamen.DoesNotExist:
+                # Question de démonstration - accepter sans validation
+                return Response({
+                    'success': True,
+                    'est_correct': reponse_choisie.upper() == 'A',  # Pour démo, A est toujours correct
+                    'bonne_reponse': 'A',
+                    'explication': 'Question de démonstration'
+                })
+                
+        except SessionComposition.DoesNotExist:
+            return Response({'error': 'Session non trouvée'}, status=404)
+        except Exception as e:
+            logger.error(f'Erreur submit_answer composition: {e}')
+            return Response({'error': str(e)}, status=500)
+    
+    @action(detail=True, methods=['post'])
+    def finish(self, request, pk=None):
+        """Terminer une session de composition et calculer le score - OPTIMISÉ"""
+        try:
+            session = SessionComposition.objects.get(id=pk, utilisateur=request.user)
+            
+            # Calculer le score avec le barème ENA : +0.5 bonne, -0.25 mauvaise, 0 pas de réponse
+            reponses = session.reponses_composition.all()
+            total_questions = reponses.count()
+            bonnes_reponses = reponses.filter(est_correcte=True).count()
+            temps_total = sum(r.temps_reponse for r in reponses)
+            
+            # Calcul du score ENA
+            score = 0
+            for reponse in reponses:
+                if reponse.est_correcte:
+                    score += 0.5
+                elif reponse.reponse_donnee:  # Mauvaise réponse
+                    score -= 0.25
+            score = max(0, score)  # Score minimum de 0
+            
+            # Mettre à jour la session
+            session.est_terminee = True
+            session.score_final = score
+            session.nombre_bonnes_reponses = bonnes_reponses
+            session.nombre_total_questions = total_questions
+            session.date_fin = timezone.now()
+            session.save()
+            
+            return Response({
+                'success': True,
+                'score': round(score, 2),
+                'bonnes_reponses': bonnes_reponses,
+                'total_questions': total_questions,
+                'temps_total': temps_total,
+                'message': 'Composition terminée avec succès !'
+            })
+            
+        except SessionComposition.DoesNotExist:
+            return Response({'error': 'Session non trouvée'}, status=404)
+        except Exception as e:
+            logger.error(f'Erreur finish composition: {e}')
+            return Response({'error': str(e)}, status=500)
+
+
+# === ViewSet pour les configurations de composition ===
+class ConfigurationCompositionViewSet(viewsets.ModelViewSet):
+    """ViewSet pour gérer les configurations des 3 feuilles de composition"""
+    from .models import ConfigurationComposition
+    from .serializers import ConfigurationCompositionSerializer
+    
+    queryset = ConfigurationComposition.objects.all()
+    serializer_class = ConfigurationCompositionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        from .models import ConfigurationComposition
+        return ConfigurationComposition.objects.all().order_by('matiere_combinee')
 
 
 # --- ViewSets pour Second Tour ENA ---

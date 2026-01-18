@@ -908,6 +908,65 @@ class ReponseComposition(models.Model):
         return f"{self.session_composition.utilisateur.nom_complet} - Q{self.question_examen.id}"
 
 
+# --- Configuration Composition (Pages dynamiques) ---
+class ConfigurationComposition(models.Model):
+    """Configuration dynamique des pages de composition nationale"""
+    MATIERE_CHOICES = [
+        ('culture_aptitude', 'Culture générale + Aptitude verbale'),
+        ('anglais', 'Anglais'),
+        ('logique_combinee', 'Logique d\'organisation + Logique numérique'),
+    ]
+    
+    matiere_combinee = models.CharField(max_length=30, choices=MATIERE_CHOICES, unique=True)
+    
+    # En-tête de la feuille de composition
+    titre_principal = models.CharField(max_length=200, default='FEUILLE DE COMPOSITION')
+    sous_titre_1 = models.CharField(max_length=200, default="CONCOURS DIRECT D'ENTRÉE EN 2024")
+    sous_titre_2 = models.CharField(max_length=200, default="AU CYCLE MOYEN DE L'ENA")
+    
+    # Informations de la matière
+    nom_affichage = models.CharField(max_length=200, help_text="Nom affiché sur la page (ex: Culture générale + Aptitude verbale)")
+    duree_minutes = models.IntegerField(default=90, help_text="Durée en minutes")
+    nombre_questions = models.IntegerField(default=40, help_text="Nombre de questions")
+    
+    # Instructions
+    instruction_principale = models.TextField(
+        default="Choisissez la bonne réponse parmi les quatre propositions.",
+        help_text="Instruction principale affichée"
+    )
+    bareme_bonne_reponse = models.DecimalField(max_digits=4, decimal_places=2, default=0.5, help_text="Points pour une bonne réponse")
+    bareme_mauvaise_reponse = models.DecimalField(max_digits=4, decimal_places=2, default=-0.25, help_text="Points pour une mauvaise réponse")
+    bareme_absence_reponse = models.DecimalField(max_digits=4, decimal_places=2, default=0, help_text="Points pour absence de réponse")
+    
+    # Couleurs de la page
+    couleur_primaire = models.CharField(max_length=7, default='#667eea', help_text="Code couleur hex (ex: #667eea)")
+    couleur_secondaire = models.CharField(max_length=7, default='#764ba2', help_text="Code couleur hex secondaire")
+    
+    # Messages dynamiques
+    message_intro = models.TextField(
+        default='Cliquez sur "Commencer" pour démarrer le timer et commencer la composition.',
+        help_text="Message affiché avant de commencer"
+    )
+    bouton_commencer = models.CharField(max_length=100, default='Commencer la composition')
+    bouton_terminer = models.CharField(max_length=100, default='Terminer la composition')
+    
+    # Pied de page
+    pied_de_page = models.TextField(blank=True, help_text="Texte du pied de page (optionnel)")
+    
+    # Métadonnées
+    est_actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Configuration Composition"
+        verbose_name_plural = "Configurations Compositions"
+        ordering = ['matiere_combinee']
+    
+    def __str__(self):
+        return f"Config: {self.get_matiere_combinee_display()}"
+
+
 # --- Plans d'abonnement ---
 TYPE_PLAN_CHOICES = [
     ('test', 'Test'),
