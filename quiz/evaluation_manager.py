@@ -54,10 +54,11 @@ class EvaluationManager:
         """Sélectionne des questions aléatoirement pour une évaluation par matière"""
         logger.info(f"🎲 Sélection aléatoire de {nb_questions} questions pour la matière {matiere_id}")
         
-        # Récupérer TOUTES les questions disponibles pour cette matière (tri aléatoire simple)
+        # Récupérer uniquement les questions d'évaluation pour cette matière (tri aléatoire simple)
         all_questions = Question.objects.filter(
             lecon__matiere_id=matiere_id,
-            lecon__matiere__choix_concours='ENA'
+            lecon__matiere__choix_concours='ENA',
+            type_source='evaluation'
         ).order_by('?')  # Ordre aléatoire
         
         total_available = all_questions.count()
@@ -89,10 +90,11 @@ class EvaluationManager:
         
         logger.info(f"🎲 Sélection aléatoire de {nb_questions} questions pour la matière {matiere_id}")
         
-        # Récupérer TOUTES les questions disponibles pour la matière (sans filtre d'unicité)
+        # Récupérer uniquement les questions d'évaluation pour la matière (sans filtre d'unicité)
         all_questions = list(Question.objects.filter(
             lecon__matiere_id=matiere_id,
-            lecon__matiere__choix_concours='ENA'
+            lecon__matiere__choix_concours='ENA',
+            type_source='evaluation'
         ).order_by('?'))  # Tri aléatoire au niveau de la base de données
         
         logger.info(f"📚 {len(all_questions)} questions totales disponibles pour la matière")
@@ -188,10 +190,11 @@ class EvaluationManager:
         """Récupère les statistiques d'évaluation pour une matière spécifique"""
         stats = self.get_weekly_evaluation_stats()
         
-        # 🎲 NOUVEAU SYSTÈME : Compter toutes les questions disponibles (plus de filtre d'unicité)
+        # 🎲 NOUVEAU SYSTÈME : Compter uniquement les questions d'évaluation (type_source='evaluation')
         available_questions = list(Question.objects.filter(
             lecon__matiere_id=matiere_id,
-            lecon__matiere__choix_concours='ENA'
+            lecon__matiere__choix_concours='ENA',
+            type_source='evaluation'
         ))
         
         # Compter les évaluations déjà passées pour cette matière
