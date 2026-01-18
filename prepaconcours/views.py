@@ -5253,3 +5253,90 @@ def template_excel_evaluation(request):
     
     return response
 
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAdminUser])
+def fix_evaluation_questions(request):
+    """
+    Corrige les questions d'évaluation existantes en les marquant avec type_source='evaluation'.
+    Corrige également les leçons qui ont été créées lors de l'import d'évaluation.
+    """
+    try:
+        # Étape 1: Identifier les leçons créées via import d'évaluation
+        # Ces leçons ont des noms comme "Géographie", "Histoire", etc. créés pendant l'import
+        # On les identifie par les questions qui y sont liées et qui ont été importées récemment
+        imports_evaluation = ImportExcel.objects.filter(import_type='questions_evaluation_ena')
+        lecons_fixed = 0
+        questions_fixed = 0
+        
+        if imports_evaluation.exists():
+            # Récupérer la date du premier import d'évaluation
+            first_import = imports_evaluation.order_by('date_import').first()
+            
+            # Les leçons créées après le premier import d'évaluation et qui ont type_lecon='quiz'
+            # sont probablement des leçons d'évaluation mal marquées
+            lecons_to_fix = Lecon.objects.filter(
+                type_lecon='quiz',
+                date_creation__gte=first_import.date_import
+            )
+            
+            # Marquer ces leçons comme 'evaluation'
+            lecons_fixed = lecons_to_fix.update(type_lecon='evaluation')
+        
+        # Étape 2: Marquer les questions dont la leçon est maintenant de type 'evaluation'
+        evaluation_lecons = Lecon.objects.filter(type_lecon='evaluation')
+        questions_by_lecon = Question.objects.filter(
+            lecon__in=evaluation_lecons,
+            type_source='quiz'
+        )
+        questions_fixed = questions_by_lecon.update(type_source='evaluation')
+        
+        # Étape 3: Alternative - marquer TOUTES les questions qui ont une leçon
+        # Si les questions ont été liées à des leçons pendant l'import évaluation
+        # et que ces leçons ont des noms spécifiques à l'évaluation
+        
+        return Response({
+            'success': True,
+            'message': f'{lecons_fixed} leçons et {questions_fixed} questions corrigées',
+            'details': {
+                'lecons_corrigees': lecons_fixed,
+                'questions_corrigees': questions_fixed,
+                'imports_evaluation_trouves': imports_evaluation.count()
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f'Erreur fix_evaluation_questions: {e}')
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAdminUser])
+def mark_questions_as_evaluation(request):
+    """
+    Marque des questions spécifiques comme questions d'évaluation.
+    Accepte une liste d'IDs de questions à marquer.
+    """
+    question_ids = request.data.get('question_ids', [])
+    
+    if not question_ids:
+        return Response({
+            'success': False,
+            'error': 'Aucun ID de question fourni'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        updated = Question.objects.filter(id__in=question_ids).update(type_source='evaluation')
+        return Response({
+            'success': True,
+            'message': f'{updated} questions marquées comme évaluation'
+        })
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

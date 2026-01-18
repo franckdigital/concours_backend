@@ -22,6 +22,7 @@ from .views import (
     import_questions_excel, template_excel_questions,
     # Endpoints pour l'import des questions d'évaluation
     import_questions_evaluation, template_excel_evaluation,
+    fix_evaluation_questions, mark_questions_as_evaluation,
     # Debug endpoint
     check_questions_disponibles,
     # ViewSets pour les abonnements et paiements
@@ -113,6 +114,8 @@ urlpatterns = [
     # Endpoints pour l'import des questions d'évaluation ENA
     path('admin/import-questions-evaluation/', import_questions_evaluation, name='import_questions_evaluation'),
     path('admin/template-excel-evaluation/', template_excel_evaluation, name='template_excel_evaluation'),
+    path('admin/fix-evaluation-questions/', fix_evaluation_questions, name='fix_evaluation_questions'),
+    path('admin/mark-questions-evaluation/', mark_questions_as_evaluation, name='mark_questions_as_evaluation'),
     
     # Debug endpoint pour vérifier les questions disponibles
     path('debug/questions-disponibles/', check_questions_disponibles, name='check_questions_disponibles'),
