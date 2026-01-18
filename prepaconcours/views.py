@@ -4881,8 +4881,10 @@ def cinetpay_retour(request):
 def import_questions_evaluation(request):
     """
     Import des questions d'évaluation ENA depuis un fichier Excel.
-    Colonnes requises: texte, type_question, matiere_nom
+    Colonnes requises: texte, type_question, matiere_nom, lecon_nom
     Colonnes optionnelles: choix_a, choix_b, choix_c, choix_d, bonne_reponse, explication, difficulte
+    
+    IMPORTANT: Les questions doivent être liées à une leçon pour être utilisées dans les évaluations ENA.
     """
     import pandas as pd
     import tempfile
@@ -4916,6 +4918,7 @@ def import_questions_evaluation(request):
                 texte = str(row.get('texte', '')).strip()
                 type_question = str(row.get('type_question', 'choix_unique')).strip()
                 matiere_nom = str(row.get('matiere_nom', '')).strip()
+                lecon_nom = str(row.get('lecon_nom', '')).strip() if pd.notna(row.get('lecon_nom')) else ''
                 difficulte = str(row.get('difficulte', 'moyen')).strip()
                 explication = str(row.get('explication', '')).strip() if pd.notna(row.get('explication')) else ''
                 
@@ -4924,21 +4927,51 @@ def import_questions_evaluation(request):
                     questions_echouees += 1
                     continue
                 
-                # Trouver la matière
+                # Trouver la matière ENA
                 try:
-                    matiere = Matiere.objects.get(nom__iexact=matiere_nom)
+                    matiere = Matiere.objects.get(nom__iexact=matiere_nom, choix_concours='ENA')
                 except Matiere.DoesNotExist:
-                    erreurs.append(f"Ligne {index + 2}: Matière '{matiere_nom}' non trouvée")
+                    # Essayer sans le filtre ENA pour un message d'erreur plus précis
+                    matiere_existe = Matiere.objects.filter(nom__iexact=matiere_nom).exists()
+                    if matiere_existe:
+                        erreurs.append(f"Ligne {index + 2}: Matière '{matiere_nom}' existe mais n'est pas une matière ENA")
+                    else:
+                        erreurs.append(f"Ligne {index + 2}: Matière ENA '{matiere_nom}' non trouvée")
                     questions_echouees += 1
                     continue
                 
-                # Créer la question
+                # Trouver ou créer la leçon
+                lecon = None
+                if lecon_nom:
+                    try:
+                        lecon = Lecon.objects.get(nom__iexact=lecon_nom, matiere=matiere)
+                    except Lecon.DoesNotExist:
+                        # Créer la leçon si elle n'existe pas
+                        lecon = Lecon.objects.create(
+                            nom=lecon_nom,
+                            matiere=matiere,
+                            ordre=Lecon.objects.filter(matiere=matiere).count() + 1
+                        )
+                        logger.info(f"Leçon '{lecon_nom}' créée pour la matière '{matiere_nom}'")
+                else:
+                    # Utiliser la première leçon de la matière ou en créer une par défaut
+                    lecon = Lecon.objects.filter(matiere=matiere).first()
+                    if not lecon:
+                        lecon = Lecon.objects.create(
+                            nom=f"Questions {matiere_nom}",
+                            matiere=matiere,
+                            ordre=1
+                        )
+                        logger.info(f"Leçon par défaut créée pour la matière '{matiere_nom}'")
+                
+                # Créer la question avec la leçon (IMPORTANT pour les évaluations)
                 question = Question.objects.create(
                     texte=texte,
                     type_question=type_question,
                     matiere=matiere,
-                    niveau=difficulte,
-                    explication=explication
+                    lecon=lecon,  # IMPORTANT: La leçon est requise pour les évaluations
+                    explication=explication,
+                    choix_concours='ENA'
                 )
                 
                 # Créer les choix si c'est une question à choix
@@ -4997,39 +5030,56 @@ def import_questions_evaluation(request):
 def template_excel_evaluation(request):
     """
     Génère et retourne un template Excel pour l'import des questions d'évaluation ENA
+    Les matières ENA valides sont : Culture Générale, Aptitude verbale, Logique numérique, etc.
     """
     import pandas as pd
     from django.http import HttpResponse
     from io import BytesIO
     
-    # Créer les données d'exemple
+    # Récupérer les matières ENA disponibles pour les afficher dans le template
+    matieres_ena = list(Matiere.objects.filter(choix_concours='ENA').values_list('nom', flat=True).distinct())
+    matieres_info = ', '.join(matieres_ena[:10]) if matieres_ena else 'Culture Générale, Aptitude verbale, Logique numérique'
+    
+    # Créer les données d'exemple avec les vraies matières ENA
     data = {
         'texte': [
             'Quelle est la capitale du Sénégal ?',
-            'Quel est le résultat de 2 + 2 ?',
-            'Qui est le premier président du Sénégal ?'
+            'Quel mot est le synonyme de "perspicace" ?',
+            'Dans la suite 2, 4, 8, 16, quel est le nombre suivant ?',
+            'Qui est le premier président du Sénégal ?',
+            'Quel est le résultat de 15 x 8 ?'
         ],
-        'type_question': ['choix_unique', 'choix_unique', 'choix_unique'],
-        'matiere_nom': ['Culture générale', 'Mathématiques', 'Histoire'],
-        'choix_a': ['Dakar', '3', 'Léopold Sédar Senghor'],
-        'choix_b': ['Abidjan', '4', 'Abdou Diouf'],
-        'choix_c': ['Bamako', '5', 'Abdoulaye Wade'],
-        'choix_d': ['Lomé', '6', 'Macky Sall'],
-        'bonne_reponse': ['A', 'B', 'A'],
+        'type_question': ['choix_unique', 'choix_unique', 'choix_unique', 'choix_unique', 'choix_unique'],
+        'matiere_nom': ['Culture Générale', 'Aptitude verbale', 'Logique numérique', 'Culture Générale', 'Logique numérique'],
+        'lecon_nom': ['Géographie', 'Vocabulaire', 'Suites numériques', 'Histoire politique', 'Calcul mental'],
+        'choix_a': ['Dakar', 'Clairvoyant', '24', 'Léopold Sédar Senghor', '100'],
+        'choix_b': ['Abidjan', 'Naïf', '32', 'Abdou Diouf', '120'],
+        'choix_c': ['Bamako', 'Confus', '20', 'Abdoulaye Wade', '115'],
+        'choix_d': ['Lomé', 'Lent', '48', 'Macky Sall', '125'],
+        'bonne_reponse': ['A', 'A', 'B', 'A', 'B'],
         'explication': [
             'Dakar est la capitale du Sénégal depuis l\'indépendance en 1960.',
-            '2 + 2 = 4',
-            'Léopold Sédar Senghor a été le premier président du Sénégal de 1960 à 1980.'
+            'Perspicace signifie qui a une vue pénétrante, qui comprend vite, synonyme de clairvoyant.',
+            'La suite double à chaque fois : 2, 4, 8, 16, 32.',
+            'Léopold Sédar Senghor a été le premier président du Sénégal de 1960 à 1980.',
+            '15 x 8 = 120'
         ],
-        'difficulte': ['facile', 'facile', 'moyen']
+        'difficulte': ['facile', 'moyen', 'moyen', 'facile', 'facile']
     }
     
     df = pd.DataFrame(data)
     
-    # Créer le fichier Excel en mémoire
+    # Créer le fichier Excel en mémoire avec 2 feuilles
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Questions Évaluation')
+        
+        # Ajouter une feuille avec les matières disponibles
+        if matieres_ena:
+            matieres_df = pd.DataFrame({
+                'Matières ENA disponibles': matieres_ena
+            })
+            matieres_df.to_excel(writer, index=False, sheet_name='Matières disponibles')
     output.seek(0)
     
     # Retourner le fichier
