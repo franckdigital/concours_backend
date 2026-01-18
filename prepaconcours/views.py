@@ -439,47 +439,51 @@ class SessionQuizViewSet(viewsets.ModelViewSet):
                 
             else:
                 # Questions à choix multiples (A, B, C, D)
-                if not reponse_choisie:
-                    return Response({'detail': 'reponse_choisie est requis pour les questions à choix.'}, status=400)
-                
-                # Gérer les réponses simples (A, B, C, D) et multiples (A,B,C)
-                reponses_lettres = [r.strip() for r in reponse_choisie.split(',')]
-                
-                # Valider que toutes les lettres sont valides
-                for lettre in reponses_lettres:
-                    if lettre not in ['A', 'B', 'C', 'D']:
-                        return Response({'detail': f'Réponse invalide: {lettre}. Doit être A, B, C ou D.'}, status=400)
-                
-                # Récupérer les choix de la question
-                choix_list = list(question.choix.all().order_by('id'))
-                print(f'[SUBMIT_ANSWER] Question {question.id}, Type: {question.type_question}')
-                print(f'[SUBMIT_ANSWER] Choix: {[(i, c.texte[:20] if c.texte else "", c.est_correct) for i, c in enumerate(choix_list)]}')
-                print(f'[SUBMIT_ANSWER] Réponse reçue: {reponses_lettres}')
-                
-                # Convertir les lettres en objets choix
-                choix_selectionnes = []
-                for lettre in reponses_lettres:
-                    choix_index = ord(lettre) - ord('A')  # A=0, B=1, C=2, D=3
-                    if choix_index >= len(choix_list):
-                        return Response({'detail': f'Choix {lettre} invalide pour cette question.'}, status=400)
-                    choix_selectionnes.append(choix_list[choix_index])
-                
-                # Déterminer si la réponse est correcte
-                if question.type_question == 'choix_multiple':
-                    # 🚀 OPTIMISATION: Éviter choix_list.index() coûteux (O(n²) → O(n))
-                    # Créer directement les indices des bonnes réponses
-                    choix_corrects_indices = {i for i, c in enumerate(choix_list) if c.est_correct}
-                    reponses_indices = {ord(lettre) - ord('A') for lettre in reponses_lettres}
-                    est_correct = choix_corrects_indices == reponses_indices
-                    print(f'[SUBMIT_ANSWER] Multiple: corrects={choix_corrects_indices}, réponse={reponses_indices}, est_correct={est_correct}')
+                # 🚀 CORRECTION: Accepter les réponses vides (temps écoulé, pas de sélection)
+                if not reponse_choisie or reponse_choisie.strip() == '':
+                    print(f'[SUBMIT_ANSWER] ⚠️ Aucune réponse choisie pour question {question_id}, marquée incorrecte')
+                    est_correct = False
+                    choix_selectionnes = []
+                    premier_choix = None
                 else:
-                    # Pour les choix uniques, vérifier le premier choix sélectionné
-                    choix_selectionne = choix_selectionnes[0]
-                    est_correct = choix_selectionne.est_correct
-                    print(f'[SUBMIT_ANSWER] Unique: choix={choix_selectionne.texte[:20] if choix_selectionne.texte else ""}, est_correct={est_correct}')
-                
-                print(f'[SUBMIT_ANSWER] ====> RÉSULTAT: est_correct={est_correct}')
-                premier_choix = choix_selectionnes[0] if choix_selectionnes else None
+                    # Gérer les réponses simples (A, B, C, D) et multiples (A,B,C)
+                    reponses_lettres = [r.strip() for r in reponse_choisie.split(',')]
+                    
+                    # Valider que toutes les lettres sont valides
+                    for lettre in reponses_lettres:
+                        if lettre not in ['A', 'B', 'C', 'D']:
+                            return Response({'detail': f'Réponse invalide: {lettre}. Doit être A, B, C ou D.'}, status=400)
+                    
+                    # Récupérer les choix de la question
+                    choix_list = list(question.choix.all().order_by('id'))
+                    print(f'[SUBMIT_ANSWER] Question {question.id}, Type: {question.type_question}')
+                    print(f'[SUBMIT_ANSWER] Choix: {[(i, c.texte[:20] if c.texte else "", c.est_correct) for i, c in enumerate(choix_list)]}')
+                    print(f'[SUBMIT_ANSWER] Réponse reçue: {reponses_lettres}')
+                    
+                    # Convertir les lettres en objets choix
+                    choix_selectionnes = []
+                    for lettre in reponses_lettres:
+                        choix_index = ord(lettre) - ord('A')  # A=0, B=1, C=2, D=3
+                        if choix_index >= len(choix_list):
+                            return Response({'detail': f'Choix {lettre} invalide pour cette question.'}, status=400)
+                        choix_selectionnes.append(choix_list[choix_index])
+                    
+                    # Déterminer si la réponse est correcte
+                    if question.type_question == 'choix_multiple':
+                        # 🚀 OPTIMISATION: Éviter choix_list.index() coûteux (O(n²) → O(n))
+                        # Créer directement les indices des bonnes réponses
+                        choix_corrects_indices = {i for i, c in enumerate(choix_list) if c.est_correct}
+                        reponses_indices = {ord(lettre) - ord('A') for lettre in reponses_lettres}
+                        est_correct = choix_corrects_indices == reponses_indices
+                        print(f'[SUBMIT_ANSWER] Multiple: corrects={choix_corrects_indices}, réponse={reponses_indices}, est_correct={est_correct}')
+                    else:
+                        # Pour les choix uniques, vérifier le premier choix sélectionné
+                        choix_selectionne = choix_selectionnes[0]
+                        est_correct = choix_selectionne.est_correct
+                        print(f'[SUBMIT_ANSWER] Unique: choix={choix_selectionne.texte[:20] if choix_selectionne.texte else ""}, est_correct={est_correct}')
+                    
+                    print(f'[SUBMIT_ANSWER] ====> RÉSULTAT: est_correct={est_correct}')
+                    premier_choix = choix_selectionnes[0] if choix_selectionnes else None
             
             # Trouver ou créer une Tentative pour cette SessionQuiz
             from .models import Tentative, ReponseTentative
