@@ -89,7 +89,7 @@ def reverse_migration(apps, schema_editor):
 class Migration(migrations.Migration):
     
     dependencies = [
-        ('prepaconcours', '0033_migrate_evaluation_questions'),  # Dépend de la dernière migration
+        ('prepaconcours', '0034_configurationcomposition'),
     ]
     
     operations = [
