@@ -4450,11 +4450,12 @@ from .serializers import (
 import uuid
 import requests
 import hashlib
+from django.conf import settings
 
-# Configuration CinetPay
-CINETPAY_API_KEY = "81368248165f9bc085b6f97.83290781"
-CINETPAY_SITE_ID = "5866272"
-CINETPAY_SECRET_KEY = "1905618043656f094465a831.25769262"
+# Configuration CinetPay depuis settings.py
+CINETPAY_API_KEY = settings.CINETPAY_API_KEY
+CINETPAY_SITE_ID = settings.CINETPAY_SITE_ID
+CINETPAY_SECRET_KEY = settings.CINETPAY_SECRET_KEY
 CINETPAY_BASE_URL = "https://api-checkout.cinetpay.com/v2"
 
 
