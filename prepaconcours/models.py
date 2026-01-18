@@ -74,15 +74,21 @@ class Matiere(models.Model):
                 return f"{self.nom} - {self.get_tour_ena_display()}"
         return f"{self.nom} ({self.cycle.nom if self.cycle else 'Sans cycle'})"
 
-# --- Leçon (catégories de leçons pour premier tour uniquement) ---
+# --- Leçon (catégories de leçons pour quiz et évaluations ENA) ---
+TYPE_LECON_CHOICES = [
+    ('quiz', 'Quiz ENA'),
+    ('evaluation', 'Évaluation ENA'),
+]
+
 class Lecon(models.Model):
-    """Représente une catégorie de leçon pour le premier tour ENA uniquement (ex: sport, éducation, science pour culture générale)"""
+    """Représente une catégorie de leçon pour les quiz ou évaluations ENA (ex: sport, éducation, science pour culture générale)"""
     
     nom = models.CharField(max_length=200, help_text="Nom de la catégorie (ex: Sport, Éducation, Science)")
-    # Relation uniquement avec les matières du premier tour ENA
     matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, related_name='lecons', 
-                               help_text="Matière du premier tour ENA")
+                               help_text="Matière ENA (premier tour)")
     description = models.TextField(null=True, blank=True, help_text="Description de cette catégorie de leçon")
+    type_lecon = models.CharField(max_length=20, choices=TYPE_LECON_CHOICES, default='quiz',
+                                  help_text="Type de leçon: quiz ou évaluation")
     
     ordre = models.PositiveIntegerField(default=0, help_text="Ordre d'affichage dans la matière")
     active = models.BooleanField(default=True, help_text="Automatiquement activé à la création")
@@ -96,12 +102,13 @@ class Lecon(models.Model):
     
     class Meta:
         ordering = ['ordre', 'nom']
-        unique_together = ('nom', 'matiere')
-        verbose_name = "Leçon (Catégorie - Premier Tour)"
-        verbose_name_plural = "Leçons (Catégories - Premier Tour)"
+        unique_together = ('nom', 'matiere', 'type_lecon')
+        verbose_name = "Leçon (Catégorie ENA)"
+        verbose_name_plural = "Leçons (Catégories ENA)"
     
     def __str__(self):
-        return f"{self.nom} ({self.matiere.nom})"
+        type_display = "Quiz" if self.type_lecon == 'quiz' else "Éval"
+        return f"{self.nom} ({self.matiere.nom}) - {type_display}"
 
 # --- Contenu Pédagogique (pour second tour ENA uniquement) ---
 class ContenuPedagogique(models.Model):

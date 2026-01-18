@@ -59,9 +59,9 @@ DEFAULT_FROM_EMAIL = 'votre_email@gmail.com'
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 
 # Configuration CinetPay
-CINETPAY_API_KEY = os.environ.get('CINETPAY_API_KEY', '12912847765bc0db748fdd44.40081707')
-CINETPAY_SITE_ID = os.environ.get('CINETPAY_SITE_ID', '445160')
-CINETPAY_SECRET_KEY = os.environ.get('CINETPAY_SECRET_KEY', '1905618043656f094465a831.25769262')
+CINETPAY_API_KEY = os.environ.get('CINETPAY_API_KEY', '1958551407664610849e5066.96237731')
+CINETPAY_SITE_ID = os.environ.get('CINETPAY_SITE_ID', '5872104')
+CINETPAY_SECRET_KEY = os.environ.get('CINETPAY_SECRET_KEY', '67618823966461245c58501.39881973')
 
 # URL de base de l'application (à configurer selon l'environnement)
 APP_BASE_URL = os.environ.get('APP_BASE_URL', 'http://localhost:8000')

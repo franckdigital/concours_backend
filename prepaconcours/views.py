@@ -2601,9 +2601,19 @@ class LeconViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         matiere_id = self.request.query_params.get('matiere_id')
+        type_lecon = self.request.query_params.get('type_lecon')
+        include_inactive = self.request.query_params.get('include_inactive', 'false')
+        
         if matiere_id:
             queryset = queryset.filter(matiere_id=matiere_id)
-        return queryset.filter(active=True)
+        if type_lecon:
+            queryset = queryset.filter(type_lecon=type_lecon)
+        
+        # Pour l'admin, permettre de voir toutes les leçons
+        if include_inactive.lower() != 'true':
+            queryset = queryset.filter(active=True)
+            
+        return queryset
 
 class ContenuPedagogiqueViewSet(viewsets.ModelViewSet):
     """ViewSet pour les contenus pédagogiques (PDF/vidéo) du second tour ENA"""
